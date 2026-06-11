@@ -1,0 +1,7 @@
+services:
+
+    # NewsletterManager is registered programmatically by the DI extension so the
+    # default_list_name scalar can be injected. The interface alias is defined here.
+    Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\NewsletterManagerInterface:
+        alias: Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\NewsletterManager
+        public: true

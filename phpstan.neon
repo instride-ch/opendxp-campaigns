@@ -1,0 +1,20 @@
+includes:
+    - vendor/phpstan/phpstan-symfony/extension.neon
+    - vendor/phpstan/phpstan-symfony/rules.neon
+
+parameters:
+    level: 8
+
+    paths:
+        - src
+
+    scanFiles:
+        - vendor/open-dxp/opendxp/stubs/dynamic-constants.php
+
+    excludePaths:
+        - src/Resources
+
+    symfony:
+        container_xml_path: var/cache/test/App_TestKernelTestDebugContainer.xml
+
+    ignoreErrors: []

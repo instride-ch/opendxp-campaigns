@@ -1,0 +1,17 @@
+imports:
+    - { resource: services/drivers.yaml }
+    - { resource: services/manager.yaml }
+    - { resource: services/messenger.yaml }
+    - { resource: services/commands.yaml }
+    - { resource: services/controllers.yaml }
+
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        public: false
+
+    Instride\Bundle\OpenDxpCampaignsBundle\Installer:
+        arguments:
+            $bundle: '@=service("kernel").getBundle("OpenDxpCampaignsBundle")'
+        public: true

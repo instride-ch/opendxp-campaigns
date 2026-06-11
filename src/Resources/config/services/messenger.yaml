@@ -1,0 +1,9 @@
+services:
+
+    Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Handler\SyncMemberToListHandler:
+        arguments:
+            $newsletterManager: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\NewsletterManagerInterface'
+            $memberResolver: '@Instride\Bundle\OpenDxpCampaignsBundle\DataObject\MemberResolverInterface'
+            $logger: '@logger'
+        tags:
+            - { name: messenger.message_handler }
