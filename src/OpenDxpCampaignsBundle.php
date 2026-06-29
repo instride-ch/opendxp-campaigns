@@ -32,11 +32,6 @@ class OpenDxpCampaignsBundle extends AbstractOpenDxpBundle
         return 'OpenDXP Campaigns';
     }
 
-    protected function getComposerPackageName(): string
-    {
-        return 'instride/opendxp-campaigns';
-    }
-
     public function getContainerExtension(): ?ExtensionInterface
     {
         if (null === $this->extension) {
@@ -49,5 +44,10 @@ class OpenDxpCampaignsBundle extends AbstractOpenDxpBundle
     public function getInstaller(): InstallerInterface
     {
         return $this->container->get(Installer::class);
+    }
+
+    protected function getComposerPackageName(): string
+    {
+        return 'instride/opendxp-campaigns';
     }
 }
