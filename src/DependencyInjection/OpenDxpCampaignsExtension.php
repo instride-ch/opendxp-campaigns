@@ -26,6 +26,7 @@ use Instride\Bundle\OpenDxpCampaignsBundle\Driver\ListConfig;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\Log\LogDriver;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\Mailchimp\MailchimpDriver;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\MergeFieldMapping;
+use Instride\Bundle\OpenDxpCampaignsBundle\EventListener\MemberDataObjectSyncListener;
 use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\MergeFieldMapper;
 use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\NewsletterManager;
 use Symfony\Component\Config\FileLocator;
@@ -55,6 +56,12 @@ class OpenDxpCampaignsExtension extends Extension
 
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../Resources/config'));
         $loader->load('services.yaml');
+
+        // Opt-in: only wire the save-triggered outbound sync listener when enabled,
+        // so it adds no overhead to DataObject saves in installs that don't want it.
+        if ($config['sync_on_save'] !== true) {
+            $container->removeDefinition(MemberDataObjectSyncListener::class);
+        }
     }
 
     public function getAlias(): string

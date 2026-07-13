@@ -5,7 +5,9 @@ services:
     Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\OutboundSyncSuppressor: ~
 
     # Pushes a member to its subscribed lists whenever it is saved in OpenDXP.
-    # DriverRegistry is registered programmatically, so reference it by id.
+    # Removed from the container unless opendxp_campaigns.sync_on_save is true
+    # (see OpenDxpCampaignsExtension). DriverRegistry is registered programmatically,
+    # so reference it by id.
     Instride\Bundle\OpenDxpCampaignsBundle\EventListener\MemberDataObjectSyncListener:
         arguments:
             $registry: '@Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry'
