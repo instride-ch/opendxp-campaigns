@@ -46,7 +46,7 @@ final readonly class DataObjectMemberProvider implements MemberProviderInterface
     {
         yield from $this->iterateBatched( static function (ConcreteListing $listing) use ($listName): void {
             $listing->addFieldCollection('CampaignNewsletterSubscription');
-            $listing->setCondition('`CampaignNewsletterSubscription`.`listKey` = :list', [
+            $listing->setCondition('`CampaignNewsletterSubscription`.`newsletterList` = :list', [
                 'list' => $listName,
             ]);
         });

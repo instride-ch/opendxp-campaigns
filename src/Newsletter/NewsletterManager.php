@@ -36,11 +36,16 @@ readonly class NewsletterManager implements NewsletterManagerInterface
         $email = $this->resolveEmail($member);
         $listConfig = $this->registry->getListConfig($resolvedList);
 
+        if ($member instanceof NewsletterMemberInterface) {
+            $mergeFields = $this->mapper->toProvider($member, $listConfig->mergeFieldMappings);
+            $interestIds = $this->extractInterestIds($member);
+        }
+
         $this->registry->getDriverForList($resolvedList)->subscribe(
             $listConfig->providerListId,
             $email,
-            $member instanceof NewsletterMemberInterface ? $this->mapper->toProvider($member, $listConfig->mergeFieldMappings) : [],
-            $member instanceof NewsletterMemberInterface ? $this->extractInterestIds($member) : [],
+            $mergeFields ?? [],
+            $interestIds ?? [],
         );
     }
 
@@ -59,11 +64,16 @@ readonly class NewsletterManager implements NewsletterManagerInterface
         $email = $this->resolveEmail($member);
         $listConfig = $this->registry->getListConfig($resolvedList);
 
+        if ($member instanceof NewsletterMemberInterface) {
+            $mergeFields = $this->mapper->toProvider($member, $listConfig->mergeFieldMappings);
+            $interestIds = $this->extractInterestIds($member);
+        }
+
         $this->registry->getDriverForList($resolvedList)->subscribeOrUpdate(
             $listConfig->providerListId,
             $email,
-            $member instanceof NewsletterMemberInterface ? $this->mapper->toProvider($member, $listConfig->mergeFieldMappings) : [],
-            $member instanceof NewsletterMemberInterface ? $this->extractInterestIds($member) : [],
+            $mergeFields ?? [],
+            $interestIds ?? [],
         );
     }
 
@@ -111,9 +121,9 @@ readonly class NewsletterManager implements NewsletterManagerInterface
         $status = $member->getNewsletterSubscriptionStatus($listName);
 
         // Treat unknown status as subscribable — let the provider decide
-        $resolvedStatus = $status ?? SubscriptionStatus::SUBSCRIBED->value;
+        $resolvedStatus = $status ?? SubscriptionStatus::SUBSCRIBED;
 
-        if ($resolvedStatus === SubscriptionStatus::UNSUBSCRIBED->value) {
+        if ($resolvedStatus === SubscriptionStatus::UNSUBSCRIBED) {
             $driver->unsubscribe($listConfig->providerListId, $member->getNewsletterEmail());
 
             return;

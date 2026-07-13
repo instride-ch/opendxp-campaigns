@@ -1,6 +1,6 @@
 services:
 
-    Instride\Bundle\OpenDxpCampaignsBundle\Command\SyncNewsletterCommand:
+    Instride\Bundle\OpenDxpCampaignsBundle\Command\PushNewsletterCommand:
         arguments:
             $registry: '@Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry'
             $newsletterManager: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\NewsletterManagerInterface'
@@ -8,5 +8,15 @@ services:
             # MemberResolverInterface and MemberProviderInterface are optional
             $memberResolver: '@?Instride\Bundle\OpenDxpCampaignsBundle\DataObject\MemberResolverInterface'
             $memberProvider: '@?Instride\Bundle\OpenDxpCampaignsBundle\DataObject\MemberProviderInterface'
+        tags:
+            - { name: console.command }
+
+    Instride\Bundle\OpenDxpCampaignsBundle\Command\PullNewsletterCommand:
+        arguments:
+            $registry: '@Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry'
+            $incomingSync: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\IncomingMemberSync'
+            $suppressor: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\OutboundSyncSuppressor'
+            # MemberResolverInterface is optional (only registered when member_class is configured)
+            $memberResolver: '@?Instride\Bundle\OpenDxpCampaignsBundle\DataObject\MemberResolverInterface'
         tags:
             - { name: console.command }

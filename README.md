@@ -4,8 +4,8 @@
 [![Latest Stable Version](https://img.shields.io/packagist/v/instride/opendxp-campaigns.svg?style=flat-square)](https://packagist.org/packages/instride/opendxp-campaigns)
 
 ### TODO
-- [ ] Finish and test merge field synchronization
-- [ ] Ensure proper bidirectional synchronization of member data
+- [x] Finish and test merge field synchronization
+- [x] Ensure proper bidirectional synchronization of member data
 - [ ] Test synchronization (Messenger, Command, etc.)
 - [ ] Implement template export functionality
 - [ ] Implement an easy migration strategy for old CMF projects

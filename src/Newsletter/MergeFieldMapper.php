@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace Instride\Bundle\OpenDxpCampaignsBundle\Newsletter;
 
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\MergeFieldMapping;
+use function Symfony\Component\String\u;
 
 /**
  * Translates member attribute values to/from provider merge field payloads using
@@ -42,7 +43,10 @@ final class MergeFieldMapper
         $result = [];
 
         foreach ($mappings as $mapping) {
-            $getter = 'get' . \ucfirst($mapping->localField);
+            $getter = u($mapping->localField)
+                ->pascal()
+                ->ensureStart('get')
+                ->toString();
 
             if (!\method_exists($member, $getter)) {
                 continue;

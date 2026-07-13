@@ -19,6 +19,7 @@ namespace Instride\Bundle\OpenDxpCampaignsBundle\DataObject;
 
 use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterMemberInterface;
 use OpenDxp\Model\DataObject\Concrete;
+use function Symfony\Component\String\u;
 
 /**
  * Resolves newsletter members from an OpenDXP DataObject class.
@@ -39,7 +40,10 @@ final readonly class DataObjectMemberResolver implements MemberResolverInterface
 
     public function resolveByEmail(string $email): ?NewsletterMemberInterface
     {
-        $finder = 'getBy' . \ucfirst($this->emailField);
+        $finder = u($this->emailField)
+            ->pascal()
+            ->ensureStart('getBy')
+            ->toString();
         $object = $this->memberClass::$finder($email, 1);
 
         return $object instanceof NewsletterMemberInterface ? $object : null;

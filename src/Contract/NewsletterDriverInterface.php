@@ -17,12 +17,14 @@ declare(strict_types=1);
 
 namespace Instride\Bundle\OpenDxpCampaignsBundle\Contract;
 
+use Carbon\CarbonInterface;
+use Instride\Bundle\OpenDxpCampaignsBundle\Driver\RemoteMember;
 use Instride\Bundle\OpenDxpCampaignsBundle\Enum\SubscriptionStatus;
 
 /**
  * Abstraction layer for newsletter provider integrations.
  *
- * Drivers must be stateless with respect to connector config — all config is
+ * Drivers must be stateless with respect to connector config — all configs are
  * provided at construction time. Implement TemplateExportCapableInterface
  * separately if the provider supports template export.
  */
@@ -36,18 +38,18 @@ interface NewsletterDriverInterface
     /**
      * Subscribe a new member to the given provider list.
      *
-     * @param string   $listId      the provider-side list/audience ID
-     * @param string   $email       subscriber email
+     * @param string                $listId      the provider-side list/audience ID
+     * @param string                $email       subscriber email
      * @param array<string, scalar> $mergeFields provider merge fields
-     * @param string[] $interestIds provider-specific interest IDs to enable
-     * @param string   $status      desired subscription status
+     * @param string[]              $interestIds provider-specific interest IDs to enable
+     * @param SubscriptionStatus    $status      desired subscription status
      */
     public function subscribe(
         string $listId,
         string $email,
         array $mergeFields = [],
         array $interestIds = [],
-        string $status = SubscriptionStatus::SUBSCRIBED->value,
+        SubscriptionStatus $status = SubscriptionStatus::SUBSCRIBED,
     ): void;
 
     /**
@@ -69,7 +71,7 @@ interface NewsletterDriverInterface
         string $email,
         array $mergeFields = [],
         array $interestIds = [],
-        string $status = SubscriptionStatus::SUBSCRIBED->value,
+        SubscriptionStatus $status = SubscriptionStatus::SUBSCRIBED,
     ): void;
 
     /**
@@ -93,4 +95,17 @@ interface NewsletterDriverInterface
      * Check whether a member is actively subscribed (status = subscribed).
      */
     public function isSubscribed(string $listId, string $email): bool;
+
+    /**
+     * Yield members whose provider record changed at or after $since.
+     *
+     * Implementations should page through the provider API internally and yield
+     * one normalized RemoteMember per record (generator) to keep memory bounded
+     * regardless of list size.
+     *
+     * @param string $listId the provider-side list/audience ID
+     *
+     * @return iterable<RemoteMember>
+     */
+    public function listChangedMembers(string $listId, CarbonInterface $since): iterable;
 }

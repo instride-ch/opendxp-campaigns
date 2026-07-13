@@ -1,0 +1,17 @@
+services:
+
+    # Re-entrancy guard shared with the inbound sync entry points (webhook + pull
+    # command) so their save() calls do not echo back out to the provider.
+    Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\OutboundSyncSuppressor: ~
+
+    # Pushes a member to its subscribed lists whenever it is saved in OpenDXP.
+    # DriverRegistry is registered programmatically, so reference it by id.
+    Instride\Bundle\OpenDxpCampaignsBundle\EventListener\MemberDataObjectSyncListener:
+        arguments:
+            $registry: '@Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry'
+            $bus: '@Symfony\Component\Messenger\MessageBusInterface'
+            $suppressor: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\OutboundSyncSuppressor'
+            $logger: '@logger'
+        tags:
+            - { name: kernel.event_listener, event: opendxp.dataobject.postAdd, method: onPostWrite }
+            - { name: kernel.event_listener, event: opendxp.dataobject.postUpdate, method: onPostWrite }

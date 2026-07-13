@@ -5,3 +5,11 @@ services:
     Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\NewsletterManagerInterface:
         alias: Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\NewsletterManager
         public: true
+
+    # Shared provider→local write-back used by the webhook controller and the pull command.
+    # DriverRegistry and MergeFieldMapper are registered programmatically, so reference them by id.
+    Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\IncomingMemberSync:
+        arguments:
+            $registry: '@Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry'
+            $mapper: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\MergeFieldMapper'
+            $eventDispatcher: '@Symfony\Contracts\EventDispatcher\EventDispatcherInterface'

@@ -22,20 +22,20 @@ use Instride\Bundle\OpenDxpCampaignsBundle\DataObject\MemberResolverInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry;
 use Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Message\SyncMemberToListMessage;
 use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\NewsletterManagerInterface;
+use OpenDxp\Console\AbstractCommand;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\Messenger\Exception\ExceptionInterface;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 #[AsCommand(
-    name: 'campaigns:newsletter:sync',
-    description: 'Synchronize member newsletter subscriptions to configured providers. Run daily as a backup to recover from missed webhook events.',
+    name: 'campaigns:newsletter:push',
+    description: 'Push member newsletter subscriptions to configured providers.',
 )]
-class SyncNewsletterCommand extends Command
+class PushNewsletterCommand extends AbstractCommand
 {
     public function __construct(
         private readonly DriverRegistry $registry,
@@ -63,8 +63,6 @@ class SyncNewsletterCommand extends Command
      */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
-
         $connectorFilter = $input->getOption('connector');
         $listFilter = $input->getOption('list');
         $member = $input->getOption('member');
@@ -72,22 +70,22 @@ class SyncNewsletterCommand extends Command
         $async = (bool) $input->getOption('async');
 
         if ($dryRun) {
-            $io->note('Dry-run mode: no API calls will be made.');
+            $this->io->note('Dry-run mode: no API calls will be made.');
         }
 
         $listNames = $this->resolveTargetLists($listFilter, $connectorFilter);
 
         if (empty($listNames)) {
-            $io->warning('No matching lists found. Check --connector and --list options.');
+            $this->io->warning('No matching lists found. Check --connector and --list options.');
 
             return Command::SUCCESS;
         }
 
         if ($member !== null) {
-            return $this->syncSingleMember($io, $listNames, $member, $dryRun, $async);
+            return $this->syncSingleMember($listNames, $member, $dryRun, $async);
         }
 
-        return $this->syncAllMembers($io, $listNames, $dryRun, $async);
+        return $this->syncAllMembers($listNames, $dryRun, $async);
     }
 
     /**
@@ -95,25 +93,20 @@ class SyncNewsletterCommand extends Command
      *
      * @throws ExceptionInterface
      */
-    private function syncSingleMember(
-        SymfonyStyle $io,
-        array $listNames,
-        string $memberValue,
-        bool $dryRun,
-        bool $async,
-    ): int {
+    private function syncSingleMember(array $listNames, string $memberValue, bool $dryRun, bool $async): int
+    {
         $member = \is_numeric($memberValue)
             ? $this->memberResolver->resolveById((int) $memberValue)
             : $this->memberResolver->resolveByEmail($memberValue);
 
         if ($member === null) {
-            $io->error(\sprintf('Member not found (value=%s).', $memberValue));
+            $this->io->error(\sprintf('Member not found (value=%s).', $memberValue));
 
             return Command::FAILURE;
         }
 
         foreach ($listNames as $listName) {
-            $io->text(\sprintf('Syncing member %s → list "%s"', $member->getNewsletterEmail(), $listName));
+            $this->io->text(\sprintf('Syncing member %s → list "%s"', $member->getNewsletterEmail(), $listName));
 
             if ($dryRun) {
                 continue;
@@ -126,7 +119,7 @@ class SyncNewsletterCommand extends Command
             }
         }
 
-        $io->success('Done.');
+        $this->io->success('Done.');
 
         return Command::SUCCESS;
     }
@@ -136,18 +129,14 @@ class SyncNewsletterCommand extends Command
      *
      * @throws ExceptionInterface
      */
-    private function syncAllMembers(
-        SymfonyStyle $io,
-        array $listNames,
-        bool $dryRun,
-        bool $async,
-    ): int {
+    private function syncAllMembers(array $listNames, bool $dryRun, bool $async): int
+    {
         foreach ($listNames as $listName) {
-            $io->section(\sprintf('Syncing all members → list "%s"', $listName));
+            $this->io->section(\sprintf('Syncing all members → list "%s"', $listName));
             $count = 0;
 
             foreach ($this->memberProvider->findByList($listName) as $member) {
-                $io->text(\sprintf('  %s', $member->getNewsletterEmail()));
+                $this->io->text(\sprintf('  %s', $member->getNewsletterEmail()));
 
                 if (!$dryRun) {
                     if ($async) {
@@ -160,10 +149,10 @@ class SyncNewsletterCommand extends Command
                 ++$count;
             }
 
-            $io->text(\sprintf('  → %d member(s) processed.', $count));
+            $this->io->text(\sprintf('  → %d member(s) processed.', $count));
         }
 
-        $io->success('Sync complete.');
+        $this->io->success('Sync complete.');
 
         return Command::SUCCESS;
     }

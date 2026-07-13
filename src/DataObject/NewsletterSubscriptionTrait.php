@@ -17,6 +17,8 @@ declare(strict_types=1);
 
 namespace Instride\Bundle\OpenDxpCampaignsBundle\DataObject;
 
+use Carbon\Carbon;
+use Instride\Bundle\OpenDxpCampaignsBundle\Enum\SubscriptionStatus;
 use OpenDxp\Model\DataObject\Fieldcollection;
 use OpenDxp\Model\DataObject\Fieldcollection\Data\CampaignNewsletterSubscription;
 
@@ -29,36 +31,42 @@ use OpenDxp\Model\DataObject\Fieldcollection\Data\CampaignNewsletterSubscription
  */
 trait NewsletterSubscriptionTrait
 {
-    public function getNewsletterSubscriptionStatus(string $listKey): ?string
+    public function getNewsletterSubscriptionStatus(string $listKey): ?SubscriptionStatus
     {
         foreach ($this->getSubscriptionItemsForList($listKey) as $item) {
-            return $item->getStatus();
+            return SubscriptionStatus::tryFrom($item->getStatus() ?? '');
         }
 
         return null;
     }
 
-    public function setNewsletterSubscriptionStatus(string $listKey, string $status): void
+    public function setNewsletterSubscriptionStatus(string $listKey, SubscriptionStatus $status): void
     {
-        $collection = $this->getNewsletterSubscriptions() ?? new Fieldcollection();
-        $found = false;
+        $this->updateSubscriptionItemForList(
+            $listKey,
+            static function (CampaignNewsletterSubscription $item) use ($status): void {
+                $item->setStatus($status->value);
+            },
+        );
+    }
 
-        foreach ($collection->getItems() as $item) {
-            if ($item instanceof CampaignNewsletterSubscription && $item->getListKey() === $listKey) {
-                $item->setStatus($status);
-                $found = true;
-                break;
-            }
+    public function getNewsletterLastSyncDate(string $listKey): ?Carbon
+    {
+        foreach ($this->getSubscriptionItemsForList($listKey) as $item) {
+            return $item->getLastSyncedAt();
         }
 
-        if (!$found) {
-            $item = new CampaignNewsletterSubscription();
-            $item->setListKey($listKey);
-            $item->setStatus($status);
-            $collection->add($item);
-        }
+        return null;
+    }
 
-        $this->setNewsletterSubscriptions($collection);
+    public function setNewsletterLastSyncDate(string $listKey, Carbon $date): void
+    {
+        $this->updateSubscriptionItemForList(
+            $listKey,
+            static function (CampaignNewsletterSubscription $item) use ($date): void {
+                $item->setLastSyncedAt($date);
+            },
+        );
     }
 
     /**
@@ -75,10 +83,37 @@ trait NewsletterSubscriptionTrait
         }
 
         foreach ($collection->getItems() as $item) {
-            if ($item instanceof CampaignNewsletterSubscription && $item->getListKey() === $listKey) {
+            if ($item instanceof CampaignNewsletterSubscription && $item->getNewsletterList() === $listKey) {
                 yield $item;
             }
         }
+    }
+
+    /**
+     * Applies the given mutation to the subscription item for the list key,
+     * creating and appending a new item when none exists yet.
+     *
+     * @param callable(CampaignNewsletterSubscription): void $mutator
+     */
+    private function updateSubscriptionItemForList(string $listKey, callable $mutator): void
+    {
+        $collection = $this->getNewsletterSubscriptions() ?? new Fieldcollection();
+
+        foreach ($collection->getItems() as $item) {
+            if ($item instanceof CampaignNewsletterSubscription && $item->getNewsletterList() === $listKey) {
+                $mutator($item);
+                $this->setNewsletterSubscriptions($collection);
+
+                return;
+            }
+        }
+
+        $item = new CampaignNewsletterSubscription();
+        $item->setNewsletterList($listKey);
+        $mutator($item);
+        $collection->add($item);
+
+        $this->setNewsletterSubscriptions($collection);
     }
 
     abstract public function getNewsletterSubscriptions(): ?Fieldcollection;

@@ -7,16 +7,50 @@ namespace Instride\Bundle\OpenDxpCampaignsBundle\Tests\Unit\Driver\Log;
 use Codeception\Test\Unit;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\Log\LogDriver;
 use Instride\Bundle\OpenDxpCampaignsBundle\Enum\SubscriptionStatus;
-use Psr\Log\Test\TestLogger;
+use Psr\Log\AbstractLogger;
+
+/**
+ * Minimal PSR-3 logger that records everything it is passed.
+ *
+ * Stands in for the former Psr\Log\Test\TestLogger, removed in psr/log 3.x.
+ * `records` mirrors that class's public array of ['level', 'message', 'context'] entries.
+ *
+ * @phpstan-type LogRecord array{level: string, message: string, context: array<string, mixed>}
+ */
+final class RecordingLogger extends AbstractLogger
+{
+    /** @var LogRecord[] */
+    public array $records = [];
+
+    public function log($level, string|\Stringable $message, array $context = []): void
+    {
+        $this->records[] = [
+            'level' => (string) $level,
+            'message' => (string) $message,
+            'context' => $context,
+        ];
+    }
+
+    public function hasInfo(string $needle = ''): bool
+    {
+        foreach ($this->records as $record) {
+            if ($record['level'] === 'info' && \str_contains($record['message'], $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
 
 class LogDriverTest extends Unit
 {
-    private TestLogger $logger;
+    private RecordingLogger $logger;
     private LogDriver $driver;
 
     protected function setUp(): void
     {
-        $this->logger = new TestLogger();
+        $this->logger = new RecordingLogger();
         $this->driver = new LogDriver('test_connector', $this->logger);
     }
 
@@ -100,6 +134,6 @@ class LogDriverTest extends Unit
         $this->driver->subscribe('list-123', 'jane@example.com');
 
         $log = $this->logger->records[0];
-        $this->assertSame(SubscriptionStatus::Subscribed->value, $log['context']['status']);
+        $this->assertSame(SubscriptionStatus::SUBSCRIBED->value, $log['context']['status']);
     }
 }

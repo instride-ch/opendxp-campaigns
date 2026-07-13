@@ -71,7 +71,7 @@ src/
 │   └── Webhook/
 │       └── MailchimpWebhookController.php  # GET (verify) + POST (events)
 ├── Command/
-│   └── SyncNewsletterCommand.php       # opendxp:campaigns:newsletter:sync
+│   └── PushNewsletterCommand.php       # campaigns:newsletter:push
 └── DependencyInjection/
     ├── Configuration.php
     └── OpenDxpCampaignsExtension.php   # builds connector service defs programmatically
@@ -311,7 +311,7 @@ class TemplateExportService {
 | 9 | Template Export Service | Template/TemplateExportService.php | [x] |
 | 10 | Messenger | Messenger/Message/*, Handler/*, Event/* | [x] |
 | 11 | Webhook Controller | Controller/Webhook/MailchimpWebhookController.php | [x] |
-| 12 | Console Command | Command/SyncNewsletterCommand.php | [x] |
+| 12 | Console Command | Command/PushNewsletterCommand.php | [x] |
 | 13 | Service Config + Routing | Resources/config/** | [x] |
 | 14 | Bundle Wiring | OpenDxpCampaignsBundle.php (update) | [x] |
 | 15 | composer.json update | composer.json | [x] |

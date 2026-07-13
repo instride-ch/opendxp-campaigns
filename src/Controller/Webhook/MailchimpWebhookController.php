@@ -17,26 +17,27 @@ declare(strict_types=1);
 
 namespace Instride\Bundle\OpenDxpCampaignsBundle\Controller\Webhook;
 
+use DrewM\MailChimp\Webhook;
 use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterMemberInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\DataObject\MemberResolverInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\Mailchimp\MailchimpDriver;
 use Instride\Bundle\OpenDxpCampaignsBundle\Enum\SubscriptionStatus;
-use Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Event\MemberSubscriptionStatusChangedEvent;
-use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\MergeFieldMapper;
+use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\IncomingMemberSync;
+use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\OutboundSyncSuppressor;
+use OpenDxp\Model\Element\DuplicateFullPathException;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
-use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 readonly class MailchimpWebhookController
 {
     public function __construct(
         private DriverRegistry $registry,
         private MemberResolverInterface $memberResolver,
-        private MergeFieldMapper $mapper,
-        private EventDispatcherInterface $eventDispatcher,
+        private IncomingMemberSync $incomingSync,
+        private OutboundSyncSuppressor $suppressor,
         private LoggerInterface $logger,
     ) {}
 
@@ -59,33 +60,55 @@ readonly class MailchimpWebhookController
             return new Response('', Response::HTTP_UNAUTHORIZED);
         }
 
-        $type = $request->request->getString('type');
-        $data = $request->request->all('data');
+        $result = Webhook::receive();
+        $type = $result['type'];
+        $data = $result['data'];
         $email = $data['email'] ?? null;
 
         $this->logger->info(
-            \sprintf('[OpenDXP Campaigns] Mailchimp webhook received: type=%s connector=%s', $type, $connectorName),
+            \sprintf(
+                '[OpenDXP Campaigns] Mailchimp webhook received: type=%s connector=%s',
+                $type,
+                $connectorName
+            ),
             ['email' => $email],
         );
 
         $member = $this->resolveMember($email);
         $changed = match ($type) {
-            'subscribe' => $this->handleStatusChange($member, $connectorName, SubscriptionStatus::SUBSCRIBED->value),
-            'unsubscribe' => $this->handleStatusChange($member, $connectorName, SubscriptionStatus::UNSUBSCRIBED->value),
-            'cleaned' => $this->handleStatusChange($member, $connectorName, SubscriptionStatus::CLEANED->value),
+            'subscribe' => $this->handleStatusChange($member, $connectorName, SubscriptionStatus::SUBSCRIBED),
+            'unsubscribe' => $this->handleStatusChange($member, $connectorName, SubscriptionStatus::UNSUBSCRIBED),
+            'cleaned' => $this->handleStatusChange($member, $connectorName, SubscriptionStatus::CLEANED),
             'profile' => $this->handleProfileUpdate($member, $connectorName, $data['merges'] ?? []),
             default => $this->handleUnknownType($type),
         };
 
         if ($changed) {
-            $member->save(['versionNote' => '[OpenDXP Campaigns] Updated by Mailchimp webhook!']);
+            try {
+                // Suppress the outbound sync listener: this save applies provider state,
+                // pushing it straight back would be a redundant round-trip.
+                $this->suppressor->suppress(
+                    static fn () => $member->save(['versionNote' => '[OpenDXP Campaigns] Updated by Mailchimp webhook!']),
+                );
+            } catch (DuplicateFullPathException $exception) {
+                $this->logger->error(
+                    \sprintf(
+                        '[OpenDXP Campaigns] Failed to save member "%s" after Mailchimp webhook update: %s',
+                        $email,
+                        $exception->getMessage()
+                    ),
+                );
+            }
         }
 
         return new Response('', Response::HTTP_OK);
     }
 
-    private function handleStatusChange(?NewsletterMemberInterface $member, string $connectorName, string $newStatus): bool
-    {
+    private function handleStatusChange(
+        ?NewsletterMemberInterface $member,
+        string $connectorName,
+        SubscriptionStatus $newStatus
+    ): bool {
         if ($member === null) {
             return false;
         }
@@ -97,18 +120,7 @@ readonly class MailchimpWebhookController
                 continue;
             }
 
-            $previousStatus = $member->getNewsletterSubscriptionStatus($listName) ?? '';
-            $member->setNewsletterSubscriptionStatus($listName, $newStatus);
-
-            $this->eventDispatcher->dispatch(new MemberSubscriptionStatusChangedEvent(
-                member: $member,
-                listName: $listName,
-                previousStatus: $previousStatus,
-                newStatus: $newStatus,
-                source: 'webhook.mailchimp',
-            ));
-
-            $changed = true;
+            $changed = $this->incomingSync->applyStatus($member, $listName, $newStatus, 'webhook.mailchimp') || $changed;
         }
 
         return $changed;
@@ -117,29 +129,23 @@ readonly class MailchimpWebhookController
     /**
      * @param array<string, scalar> $mergeFieldData  provider merge tags from the webhook payload
      */
-    private function handleProfileUpdate(?NewsletterMemberInterface $member, string $connectorName, array $mergeFieldData): bool
-    {
+    private function handleProfileUpdate(
+        ?NewsletterMemberInterface $member,
+        string $connectorName,
+        array $mergeFieldData
+    ): bool {
         if ($member === null || $mergeFieldData === []) {
             return false;
         }
 
         $changed = false;
 
-        foreach ($this->registry->getListConfigs() as $listConfig) {
-            if ($listConfig->connectorName !== $connectorName || $listConfig->mergeFieldMappings === []) {
+        foreach ($this->registry->getListConfigs() as $listName => $listConfig) {
+            if ($listConfig->connectorName !== $connectorName) {
                 continue;
             }
 
-            $localFields = $this->mapper->fromProvider($mergeFieldData, $listConfig->mergeFieldMappings);
-
-            foreach ($localFields as $localField => $value) {
-                $setter = 'set' . \ucfirst($localField);
-
-                if (\method_exists($member, $setter)) {
-                    $member->$setter($value);
-                    $changed = true;
-                }
-            }
+            $changed = $this->incomingSync->applyMergeFields($member, $listName, $mergeFieldData) || $changed;
         }
 
         return $changed;

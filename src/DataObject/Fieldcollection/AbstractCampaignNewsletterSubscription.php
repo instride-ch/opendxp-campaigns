@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace Instride\Bundle\OpenDxpCampaignsBundle\DataObject\Fieldcollection;
 
+use Carbon\Carbon;
 use OpenDxp\Model\DataObject\Fieldcollection\Data\AbstractData;
 
 /**
@@ -28,9 +29,9 @@ use OpenDxp\Model\DataObject\Fieldcollection\Data\AbstractData;
  */
 abstract class AbstractCampaignNewsletterSubscription extends AbstractData
 {
-    abstract public function getListKey(): ?string;
+    abstract public function getNewsletterList(): ?string;
 
-    abstract public function setListKey(?string $listKey): static;
+    abstract public function setNewsletterList(?string $listKey): static;
 
     abstract public function getStatus(): ?string;
 
@@ -40,7 +41,7 @@ abstract class AbstractCampaignNewsletterSubscription extends AbstractData
 
     abstract public function setProviderMemberId(?string $providerMemberId): static;
 
-    abstract public function getLastSyncedAt(): ?\DateTime;
+    abstract public function getLastSyncedAt(): ?Carbon;
 
-    abstract public function setLastSyncedAt(?\DateTime $lastSyncedAt): static;
+    abstract public function setLastSyncedAt(?Carbon $lastSyncedAt): static;
 }

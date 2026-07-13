@@ -4,6 +4,7 @@ imports:
     - { resource: services/messenger.yaml }
     - { resource: services/commands.yaml }
     - { resource: services/controllers.yaml }
+    - { resource: services/listeners.yaml }
 
 services:
     _defaults:
@@ -14,4 +15,9 @@ services:
     Instride\Bundle\OpenDxpCampaignsBundle\Installer:
         arguments:
             $bundle: '@=service("kernel").getBundle("OpenDxpCampaignsBundle")'
+        public: true
+
+    # Dynamic select options provider exposing all configured newsletter lists.
+    # Must be public so it can be referenced by service id in a class definition.
+    Instride\Bundle\OpenDxpCampaignsBundle\DataObject\ClassDefinition\OptionsProvider\NewsletterListOptionsProvider:
         public: true

@@ -13,6 +13,20 @@ use Instride\Bundle\OpenDxpCampaignsBundle\Driver\MergeFieldMapping;
 use Instride\Bundle\OpenDxpCampaignsBundle\Enum\SubscriptionStatus;
 use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\MergeFieldMapper;
 use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\NewsletterManager;
+use PHPUnit\Framework\MockObject\MockObject;
+use function Symfony\Component\String\u;
+
+/**
+ * Members carry app-specific merge-field getters (getFirstname/getLastname) resolved
+ * dynamically by MergeFieldMapper. These do not live on NewsletterMemberInterface, so
+ * we declare a local test-double type that exposes exactly the surface these tests touch.
+ */
+interface ManagerTestMember extends NewsletterMemberInterface
+{
+    public function getFirstname(): ?string;
+
+    public function getLastname(): ?string;
+}
 
 class NewsletterManagerTest extends Unit
 {
@@ -160,12 +174,12 @@ class NewsletterManagerTest extends Unit
     {
         $member = $this->buildMember('jane@example.com', []);
         $member->method('getNewsletterSubscriptionStatus')->with('default_newsletter')
-            ->willReturn(SubscriptionStatus::Subscribed->value);
+            ->willReturn(SubscriptionStatus::SUBSCRIBED);
 
         $this->driver
             ->expects($this->once())
             ->method('subscribeOrUpdate')
-            ->with('abc123', 'jane@example.com', [], [], SubscriptionStatus::Subscribed->value);
+            ->with('abc123', 'jane@example.com', [], [], SubscriptionStatus::SUBSCRIBED);
 
         $this->manager->syncMemberToList($member, 'default_newsletter');
     }
@@ -189,12 +203,12 @@ class NewsletterManagerTest extends Unit
         $manager = new NewsletterManager($registry, 'default_newsletter', $this->mapper);
 
         $member = $this->buildMember('jane@example.com', ['firstname' => 'Jane']);
-        $member->method('getNewsletterSubscriptionStatus')->willReturn(SubscriptionStatus::Subscribed->value);
+        $member->method('getNewsletterSubscriptionStatus')->willReturn(SubscriptionStatus::SUBSCRIBED);
 
         $this->driver
             ->expects($this->once())
             ->method('subscribeOrUpdate')
-            ->with('abc123', 'jane@example.com', ['FNAME' => 'Jane'], [], SubscriptionStatus::Subscribed->value);
+            ->with('abc123', 'jane@example.com', ['FNAME' => 'Jane'], [], SubscriptionStatus::SUBSCRIBED);
 
         $manager->syncMemberToList($member, 'default_newsletter');
     }
@@ -203,8 +217,7 @@ class NewsletterManagerTest extends Unit
     {
         $member = $this->buildMember('jane@example.com', []);
         $member->method('getNewsletterSubscriptionStatus')->with('default_newsletter')
-            ->willReturn(SubscriptionStatus::Unsubscribed->value);
-
+            ->willReturn(SubscriptionStatus::UNSUBSCRIBED);
         $this->driver->expects($this->once())->method('unsubscribe')->with('abc123', 'jane@example.com');
         $this->driver->expects($this->never())->method('subscribeOrUpdate');
 
@@ -219,7 +232,7 @@ class NewsletterManagerTest extends Unit
         $this->driver
             ->expects($this->once())
             ->method('subscribeOrUpdate')
-            ->with('abc123', 'jane@example.com', [], [], SubscriptionStatus::Subscribed->value);
+            ->with('abc123', 'jane@example.com', [], [], SubscriptionStatus::SUBSCRIBED);
 
         $this->manager->syncMemberToList($member, 'default_newsletter');
     }
@@ -247,14 +260,18 @@ class NewsletterManagerTest extends Unit
     /**
      * @param array<string, mixed> $attributes  localField → value, matched by getter name
      */
-    private function buildMember(string $email, array $attributes): NewsletterMemberInterface&\PHPUnit\Framework\MockObject\MockObject
+    private function buildMember(string $email, array $attributes): ManagerTestMember&MockObject
     {
-        $member = $this->createMock(NewsletterMemberInterface::class);
+        $member = $this->createMock(ManagerTestMember::class);
         $member->method('getNewsletterEmail')->willReturn($email);
         $member->method('getNewsletterSegments')->willReturn([]);
 
         foreach ($attributes as $field => $value) {
-            $member->method('get' . \ucfirst($field))->willReturn($value);
+            $getter = u($field)
+                ->pascal()
+                ->ensureStart('get')
+                ->toString();
+            $member->method($getter)->willReturn($value);
         }
 
         return $member;

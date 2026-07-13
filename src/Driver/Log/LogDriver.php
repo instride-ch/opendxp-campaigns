@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace Instride\Bundle\OpenDxpCampaignsBundle\Driver\Log;
 
+use Carbon\CarbonInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterDriverInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Enum\SubscriptionStatus;
 use Psr\Log\LoggerInterface;
@@ -44,12 +45,12 @@ readonly class LogDriver implements NewsletterDriverInterface
         string $email,
         array $mergeFields = [],
         array $interestIds = [],
-        string $status = SubscriptionStatus::SUBSCRIBED->value,
+        SubscriptionStatus $status = SubscriptionStatus::SUBSCRIBED,
     ): void {
         $this->log('subscribe', $listId, $email, [
             'merge_fields' => $mergeFields,
             'interest_ids' => $interestIds,
-            'status' => $status,
+            'status' => $status->value,
         ]);
     }
 
@@ -63,12 +64,12 @@ readonly class LogDriver implements NewsletterDriverInterface
         string $email,
         array $mergeFields = [],
         array $interestIds = [],
-        string $status = SubscriptionStatus::SUBSCRIBED->value,
+        SubscriptionStatus $status = SubscriptionStatus::SUBSCRIBED,
     ): void {
         $this->log('subscribeOrUpdate', $listId, $email, [
             'merge_fields' => $mergeFields,
             'interest_ids' => $interestIds,
-            'status' => $status,
+            'status' => $status->value,
         ]);
     }
 
@@ -98,14 +99,27 @@ readonly class LogDriver implements NewsletterDriverInterface
         return false;
     }
 
+    public function listChangedMembers(string $listId, CarbonInterface $since): iterable
+    {
+        $this->log('listChangedMembers', $listId, '', [
+            'since' => $since->toIso8601String(),
+        ]);
+
+        return [];
+    }
+
     /**
      * @param array<string, mixed> $context
      */
     private function log(string $operation, string $listId, string $email, array $context = []): void
     {
+        if ($email !== '') {
+            $context = \array_merge(['email' => $email], $context);
+        }
+
         $this->logger->info(
             \sprintf('[OpenDXP Campaigns][log driver][%s] %s → list %s', $this->connectorName, $operation, $listId),
-            \array_merge(['email' => $email], $context),
+            $context,
         );
     }
 }

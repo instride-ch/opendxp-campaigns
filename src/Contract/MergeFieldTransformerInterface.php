@@ -21,7 +21,7 @@ namespace Instride\Bundle\OpenDxpCampaignsBundle\Contract;
  * Bidirectional value transformer for a single merge field.
  *
  * Implement this interface when a raw member attribute value needs to be shaped
- * before sending to the provider (e.g. formatting a date, normalising a phone
+ * before sending to the provider (e.g., formatting a date, normalizing a phone
  * number) and when an incoming webhook value needs to be shaped back before
  * being written to the member object.
  */
@@ -32,12 +32,12 @@ interface MergeFieldTransformerInterface
      *
      * Called during subscribe/sync before the payload is sent to the provider.
      */
-    public function toProvider(mixed $value): string|int|float|bool;
+    public function toProvider(mixed $value): mixed;
 
     /**
      * Converts a provider-side scalar back to a local member attribute value.
      *
      * Called when a webhook profile-update event carries a new merge field value.
      */
-    public function fromProvider(string|int|float|bool $value): mixed;
+    public function fromProvider(mixed $value): mixed;
 }

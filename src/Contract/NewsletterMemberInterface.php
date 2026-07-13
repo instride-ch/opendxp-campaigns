@@ -17,13 +17,15 @@ declare(strict_types=1);
 
 namespace Instride\Bundle\OpenDxpCampaignsBundle\Contract;
 
+use Carbon\Carbon;
+use Instride\Bundle\OpenDxpCampaignsBundle\Enum\SubscriptionStatus;
 use OpenDxp\Model\Element\ElementInterface;
 
 /**
  * Contract for application-specific member objects that participate in newsletter synchronization.
  *
  * The bundle owns no concrete Member entity. The application implements this interface
- * on its own Member class. Subscription status changes are persisted by the bundle via
+ * on its own Member class. The bundle persists subscription status changes via
  * the save() method inherited from ElementInterface.
  */
 interface NewsletterMemberInterface extends ElementInterface
@@ -45,7 +47,7 @@ interface NewsletterMemberInterface extends ElementInterface
      *
      * @param string $listKey the configured list identifier (YAML key under `lists:`)
      */
-    public function getNewsletterSubscriptionStatus(string $listKey): ?string;
+    public function getNewsletterSubscriptionStatus(string $listKey): ?SubscriptionStatus;
 
     /**
      * Stores the subscription status for the given list key.
@@ -53,8 +55,24 @@ interface NewsletterMemberInterface extends ElementInterface
      * The application must persist this change — the bundle only calls this setter.
      * Dispatch a domain event or flush from an event listener to persist.
      *
-     * @param string $listKey  the configured list identifier (YAML key under `lists:`)
-     * @param string $status   one of the SubscriptionStatus enum values
+     * @param string             $listKey  the configured list identifier (YAML key under `lists:`)
+     * @param SubscriptionStatus $status   one of the SubscriptionStatus enum cases
      */
-    public function setNewsletterSubscriptionStatus(string $listKey, string $status): void;
+    public function setNewsletterSubscriptionStatus(string $listKey, SubscriptionStatus $status): void;
+
+    /**
+     * Returns the timestamp of the last successful sync for the given list key, or null.
+     *
+     * @param string $listKey the configured list identifier
+     */
+    public function getNewsletterLastSyncDate(string $listKey): ?Carbon;
+
+    /**
+     * Stores the timestamp of the last successful sync for the given list key.
+     *
+     * The application must persist this change — the bundle only calls this setter.
+     *
+     * @param string $listKey the configured list identifier
+     */
+    public function setNewsletterLastSyncDate(string $listKey, Carbon $date): void;
 }

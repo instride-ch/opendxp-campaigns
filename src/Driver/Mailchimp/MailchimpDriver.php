@@ -17,9 +17,11 @@ declare(strict_types=1);
 
 namespace Instride\Bundle\OpenDxpCampaignsBundle\Driver\Mailchimp;
 
+use Carbon\CarbonInterface;
 use DrewM\MailChimp\MailChimp;
 use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterDriverInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Contract\TemplateExportCapableInterface;
+use Instride\Bundle\OpenDxpCampaignsBundle\Driver\RemoteMember;
 use Instride\Bundle\OpenDxpCampaignsBundle\Enum\SubscriptionStatus;
 use Instride\Bundle\OpenDxpCampaignsBundle\Exception\DriverException;
 use Instride\Bundle\OpenDxpCampaignsBundle\Template\TemplateExport;
@@ -37,6 +39,19 @@ use Psr\Log\LoggerInterface;
  */
 class MailchimpDriver implements NewsletterDriverInterface, TemplateExportCapableInterface
 {
+    /**
+     * Mailchimp caps the members endpoint at 1000 rows per page; 100 keeps each
+     * response small while still limiting the number of round-trips.
+     */
+    private const int PAGE_SIZE = 100;
+
+    /**
+     * Only these fields are requested from the members endpoint so responses stay
+     * small when paging through a full audience.
+     */
+    private const string LIST_FIELDS = 'members.email_address,members.status,members.merge_fields,members.id';
+
+
     private ?MailChimp $client = null;
 
     public function __construct(
@@ -56,7 +71,7 @@ class MailchimpDriver implements NewsletterDriverInterface, TemplateExportCapabl
         string $email,
         array $mergeFields = [],
         array $interestIds = [],
-        string $status = SubscriptionStatus::SUBSCRIBED->value,
+        SubscriptionStatus $status = SubscriptionStatus::SUBSCRIBED,
     ): void {
         $payload = $this->buildMemberPayload($email, $mergeFields, $interestIds, $status);
 
@@ -81,7 +96,7 @@ class MailchimpDriver implements NewsletterDriverInterface, TemplateExportCapabl
         string $email,
         array $mergeFields = [],
         array $interestIds = [],
-        string $status = SubscriptionStatus::SUBSCRIBED->value,
+        SubscriptionStatus $status = SubscriptionStatus::SUBSCRIBED,
     ): void {
         $hash = $this->subscriberHash($email);
         $payload = $this->buildMemberPayload($email, $mergeFields, $interestIds, $status);
@@ -134,8 +149,34 @@ class MailchimpDriver implements NewsletterDriverInterface, TemplateExportCapabl
     public function isSubscribed(string $listId, string $email): bool
     {
         $member = $this->getMember($listId, $email);
+        $status = SubscriptionStatus::tryFrom($member['status'] ?? '');
 
-        return ($member['status'] ?? '') === SubscriptionStatus::SUBSCRIBED->value;
+        return $status === SubscriptionStatus::SUBSCRIBED;
+    }
+
+    public function listChangedMembers(string $listId, CarbonInterface $since): iterable
+    {
+        $offset = 0;
+
+        do {
+            $result = $this->client()->get("lists/{$listId}/members", [
+                'since_last_changed' => $since->toAtomString(),
+                'count' => self::PAGE_SIZE,
+                'offset' => $offset,
+                'fields' => self::LIST_FIELDS,
+            ]);
+
+            $this->assertSuccess('listChangedMembers', $result);
+
+            $members = \is_array($result) ? ($result['members'] ?? []) : [];
+
+            foreach ($members as $row) {
+                yield $this->mapRemoteMember($row);
+            }
+
+            $fetched = \count($members);
+            $offset += self::PAGE_SIZE;
+        } while ($fetched === self::PAGE_SIZE);
     }
 
     public function exportTemplate(TemplateExport $template): string
@@ -192,6 +233,31 @@ class MailchimpDriver implements NewsletterDriverInterface, TemplateExportCapabl
     }
 
     /**
+     * Maps a raw Mailchimp members row to a normalized RemoteMember.
+     *
+     * Statuses without an enum mapping (e.g. 'transactional', 'archived') become null,
+     * so the caller applies merge fields but skips the status change.
+     *
+     * @param array<string, mixed> $row
+     */
+    private function mapRemoteMember(array $row): RemoteMember
+    {
+        $mergeFields = [];
+        foreach (($row['merge_fields'] ?? []) as $tag => $value) {
+            if (\is_scalar($value)) {
+                $mergeFields[$tag] = $value;
+            }
+        }
+
+        return new RemoteMember(
+            email: (string) ($row['email_address'] ?? ''),
+            status: SubscriptionStatus::tryFrom((string) ($row['status'] ?? '')),
+            mergeFields: $mergeFields,
+            providerMemberId: isset($row['id']) ? (string) $row['id'] : null,
+        );
+    }
+
+    /**
      * @param array<string, scalar> $mergeFields
      * @param string[]              $interestIds
      * @return array<string, mixed>
@@ -200,11 +266,11 @@ class MailchimpDriver implements NewsletterDriverInterface, TemplateExportCapabl
         string $email,
         array $mergeFields,
         array $interestIds,
-        string $status,
+        SubscriptionStatus $status,
     ): array {
         $payload = [
             'email_address' => $email,
-            'status' => $status,
+            'status' => $status->value,
         ];
 
         if (!empty($mergeFields)) {
