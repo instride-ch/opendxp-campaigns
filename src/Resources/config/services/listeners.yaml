@@ -17,3 +17,11 @@ services:
         tags:
             - { name: kernel.event_listener, event: opendxp.dataobject.postAdd, method: onPostWrite }
             - { name: kernel.event_listener, event: opendxp.dataobject.postUpdate, method: onPostWrite }
+
+    # Validates segment / segment-group names, placement and uniqueness before write.
+    # Always active (cheap, guards data integrity); throws a ValidationException the
+    # admin UI surfaces on invalid input.
+    Instride\Bundle\OpenDxpCampaignsBundle\EventListener\SegmentNameValidationListener:
+        tags:
+            - { name: kernel.event_listener, event: opendxp.dataobject.preAdd, method: onPreWrite }
+            - { name: kernel.event_listener, event: opendxp.dataobject.preUpdate, method: onPreWrite }

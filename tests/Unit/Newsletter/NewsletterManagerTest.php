@@ -10,9 +10,12 @@ use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterMemberInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\ListConfig;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\MergeFieldMapping;
+use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterSegmentGroupInterface;
+use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterSegmentInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Enum\SubscriptionStatus;
 use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\MergeFieldMapper;
 use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\NewsletterManager;
+use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\RemoteIdStore;
 use PHPUnit\Framework\MockObject\MockObject;
 use function Symfony\Component\String\u;
 
@@ -35,11 +38,13 @@ class NewsletterManagerTest extends Unit
     private NewsletterManager $manager;
     private ListConfig $listConfig;
     private MergeFieldMapper $mapper;
+    private RemoteIdStore&MockObject $remoteIds;
 
     protected function setUp(): void
     {
         $this->driver = $this->createMock(NewsletterDriverInterface::class);
         $this->mapper = new MergeFieldMapper();
+        $this->remoteIds = $this->createMock(RemoteIdStore::class);
 
         $this->listConfig = new ListConfig(
             identifier: 'default_newsletter',
@@ -53,7 +58,7 @@ class NewsletterManagerTest extends Unit
             listConfigs: ['default_newsletter' => $this->listConfig],
         );
 
-        $this->manager = new NewsletterManager($this->registry, 'default_newsletter', $this->mapper);
+        $this->manager = new NewsletterManager($this->registry, 'default_newsletter', $this->mapper, $this->remoteIds);
     }
 
     public function testSubscribeWithStringEmail(): void
@@ -95,7 +100,7 @@ class NewsletterManagerTest extends Unit
             connectors: ['main' => $this->driver],
             listConfigs: ['default_newsletter' => $listConfigWithMappings],
         );
-        $manager = new NewsletterManager($registry, 'default_newsletter', $this->mapper);
+        $manager = new NewsletterManager($registry, 'default_newsletter', $this->mapper, $this->remoteIds);
 
         $member = $this->buildMember('jane@example.com', ['firstname' => 'Jane', 'lastname' => 'Doe']);
 
@@ -200,7 +205,7 @@ class NewsletterManagerTest extends Unit
             connectors: ['main' => $this->driver],
             listConfigs: ['default_newsletter' => $listConfigWithMappings],
         );
-        $manager = new NewsletterManager($registry, 'default_newsletter', $this->mapper);
+        $manager = new NewsletterManager($registry, 'default_newsletter', $this->mapper, $this->remoteIds);
 
         $member = $this->buildMember('jane@example.com', ['firstname' => 'Jane']);
         $member->method('getNewsletterSubscriptionStatus')->willReturn(SubscriptionStatus::SUBSCRIBED);
@@ -247,9 +252,40 @@ class NewsletterManagerTest extends Unit
         $this->manager->syncMember($member);
     }
 
+    public function testInterestIdsResolvedFromStoreOnlyForTargetedLists(): void
+    {
+        $group = $this->createMock(NewsletterSegmentGroupInterface::class);
+        $group->method('getNewsletterListNames')->willReturn(['default_newsletter']);
+
+        $targetedSegment = $this->createMock(NewsletterSegmentInterface::class);
+        $targetedSegment->method('getNewsletterSegmentGroup')->willReturn($group);
+
+        // Segment whose group targets a different list — must be excluded.
+        $otherGroup = $this->createMock(NewsletterSegmentGroupInterface::class);
+        $otherGroup->method('getNewsletterListNames')->willReturn(['product_updates']);
+        $otherSegment = $this->createMock(NewsletterSegmentInterface::class);
+        $otherSegment->method('getNewsletterSegmentGroup')->willReturn($otherGroup);
+
+        $member = $this->buildMember('jane@example.com', []);
+        $member->method('getNewsletterSegments')->willReturn([$targetedSegment, $otherSegment]);
+        $member->method('getNewsletterSubscriptionStatus')->willReturn(SubscriptionStatus::SUBSCRIBED);
+
+        $this->remoteIds
+            ->method('getRemoteId')
+            ->with($targetedSegment, 'main', 'default_newsletter')
+            ->willReturn('interest_123');
+
+        $this->driver
+            ->expects($this->once())
+            ->method('subscribeOrUpdate')
+            ->with('abc123', 'jane@example.com', [], ['interest_123'], SubscriptionStatus::SUBSCRIBED);
+
+        $this->manager->syncMemberToList($member, 'default_newsletter');
+    }
+
     public function testNoListNameAndNoDefaultThrowsLogicException(): void
     {
-        $managerWithoutDefault = new NewsletterManager($this->registry, null, $this->mapper);
+        $managerWithoutDefault = new NewsletterManager($this->registry, null, $this->mapper, $this->remoteIds);
 
         $this->expectException(\LogicException::class);
         $managerWithoutDefault->subscribe('jane@example.com');

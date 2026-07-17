@@ -5,6 +5,7 @@ imports:
     - { resource: services/commands.yaml }
     - { resource: services/controllers.yaml }
     - { resource: services/listeners.yaml }
+    - { resource: services/segments.yaml }
 
 services:
     _defaults:
@@ -15,6 +16,9 @@ services:
     Instride\Bundle\OpenDxpCampaignsBundle\Installer:
         arguments:
             $bundle: '@=service("kernel").getBundle("OpenDxpCampaignsBundle")'
+            $memberClass: '%opendxp_campaigns.member_class%'
+            $segmentClass: '%opendxp_campaigns.segments.segment_class%'
+            $segmentGroupClass: '%opendxp_campaigns.segments.segment_group_class%'
         public: true
 
     # Dynamic select options provider exposing all configured newsletter lists.

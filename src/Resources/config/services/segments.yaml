@@ -1,0 +1,64 @@
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        public: false
+
+    # Self-contained lock (filesystem) so segment export needs no app lock config.
+    # Serializes concurrent (object, list) exports so an interest category is never
+    # created twice. Override the store in the app for multi-server setups.
+    opendxp_campaigns.lock.store:
+        class: Symfony\Component\Lock\Store\FlockStore
+
+    opendxp_campaigns.lock.factory:
+        class: Symfony\Component\Lock\LockFactory
+        arguments:
+            $store: '@opendxp_campaigns.lock.store'
+
+    # Note-backed, cached remote-ID store (Mailchimp interest / category IDs).
+    Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\RemoteIdStore:
+        arguments:
+            $cache: '@cache.app'
+
+    # Orchestrates segment / group export. DriverRegistry is registered
+    # programmatically, so reference it by id.
+    Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\SegmentExporter:
+        arguments:
+            $registry: '@Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry'
+            $remoteIds: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\RemoteIdStore'
+            $lockFactory: '@opendxp_campaigns.lock.factory'
+            $logger: '@logger'
+
+    # Message handlers (auto-tagged via #[AsMessageHandler]).
+    Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Handler\SyncSegmentGroupHandler:
+        arguments:
+            $exporter: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\SegmentExporter'
+            $logger: '@logger'
+
+    Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Handler\SyncSegmentHandler:
+        arguments:
+            $exporter: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\SegmentExporter'
+            $logger: '@logger'
+
+    Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Handler\DeleteSegmentGroupHandler:
+        arguments:
+            $exporter: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\SegmentExporter'
+
+    Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Handler\DeleteSegmentHandler:
+        arguments:
+            $exporter: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\SegmentExporter'
+
+    # Dispatches segment / group sync + delete messages on save / delete.
+    # Removed from the container unless opendxp_campaigns.segments.sync_on_save is
+    # true (see OpenDxpCampaignsExtension).
+    Instride\Bundle\OpenDxpCampaignsBundle\EventListener\SegmentSyncListener:
+        arguments:
+            $registry: '@Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry'
+            $remoteIds: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\RemoteIdStore'
+            $bus: '@Symfony\Component\Messenger\MessageBusInterface'
+            $logger: '@logger'
+        tags:
+            - { name: kernel.event_listener, event: opendxp.dataobject.postAdd, method: onPostWrite }
+            - { name: kernel.event_listener, event: opendxp.dataobject.postUpdate, method: onPostWrite }
+            - { name: kernel.event_listener, event: opendxp.dataobject.preDelete, method: onPreDelete }
+            - { name: kernel.event_listener, event: opendxp.dataobject.postDelete, method: onPostDelete }

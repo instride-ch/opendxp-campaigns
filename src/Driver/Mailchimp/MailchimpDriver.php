@@ -20,6 +20,7 @@ namespace Instride\Bundle\OpenDxpCampaignsBundle\Driver\Mailchimp;
 use Carbon\CarbonInterface;
 use DrewM\MailChimp\MailChimp;
 use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterDriverInterface;
+use Instride\Bundle\OpenDxpCampaignsBundle\Contract\SegmentExportCapableInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Contract\TemplateExportCapableInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\RemoteMember;
 use Instride\Bundle\OpenDxpCampaignsBundle\Enum\SubscriptionStatus;
@@ -37,8 +38,14 @@ use Psr\Log\LoggerInterface;
  * Requires drewm/mailchimp-api to be installed:
  *   composer require drewm/mailchimp-api
  */
-class MailchimpDriver implements NewsletterDriverInterface, TemplateExportCapableInterface
+class MailchimpDriver implements NewsletterDriverInterface, TemplateExportCapableInterface, SegmentExportCapableInterface
 {
+    /**
+     * Interest category display type. "hidden" keeps the grouping out of
+     * subscriber-facing signup forms; segments are managed from OpenDXP.
+     */
+    private const string INTEREST_CATEGORY_TYPE = 'hidden';
+
     /**
      * Mailchimp caps the members endpoint at 1000 rows per page; 100 keeps each
      * response small while still limiting the number of round-trips.
@@ -202,6 +209,56 @@ class MailchimpDriver implements NewsletterDriverInterface, TemplateExportCapabl
         return (string) ($result['id'] ?? '');
     }
 
+    public function exportSegmentGroup(string $listId, string $name, ?string $remoteId): string
+    {
+        if ($remoteId !== null) {
+            $result = $this->client()->patch("lists/{$listId}/interest-categories/{$remoteId}", [
+                'title' => $name,
+                'type' => self::INTEREST_CATEGORY_TYPE,
+            ]);
+            $this->assertSuccess('exportSegmentGroup (update)', $result);
+
+            return $remoteId;
+        }
+
+        $result = $this->client()->post("lists/{$listId}/interest-categories", [
+            'title' => $name,
+            'type' => self::INTEREST_CATEGORY_TYPE,
+        ]);
+        $this->assertSuccess('exportSegmentGroup (create)', $result);
+
+        return (string) ($result['id'] ?? '');
+    }
+
+    public function deleteSegmentGroup(string $listId, string $remoteId): void
+    {
+        $this->client()->delete("lists/{$listId}/interest-categories/{$remoteId}");
+        $this->assertDeleted('deleteSegmentGroup');
+    }
+
+    public function exportSegment(string $listId, string $groupRemoteId, string $name, ?string $remoteId): string
+    {
+        $base = "lists/{$listId}/interest-categories/{$groupRemoteId}/interests";
+
+        if ($remoteId !== null) {
+            $result = $this->client()->patch("{$base}/{$remoteId}", ['name' => $name]);
+            $this->assertSuccess('exportSegment (update)', $result);
+
+            return $remoteId;
+        }
+
+        $result = $this->client()->post($base, ['name' => $name]);
+        $this->assertSuccess('exportSegment (create)', $result);
+
+        return (string) ($result['id'] ?? '');
+    }
+
+    public function deleteSegment(string $listId, string $groupRemoteId, string $remoteId): void
+    {
+        $this->client()->delete("lists/{$listId}/interest-categories/{$groupRemoteId}/interests/{$remoteId}");
+        $this->assertDeleted('deleteSegment');
+    }
+
     public function getWebhookSecret(): ?string
     {
         return $this->webhookSecret;
@@ -300,6 +357,27 @@ class MailchimpDriver implements NewsletterDriverInterface, TemplateExportCapabl
         }
 
         return null;
+    }
+
+    /**
+     * Asserts a delete succeeded, treating an already-absent resource (404) as success
+     * so deletes stay idempotent and safe to retry.
+     */
+    private function assertDeleted(string $operation): void
+    {
+        if ($this->client()->success()) {
+            return;
+        }
+
+        if (($this->client()->getLastResponse()['headers']['http_code'] ?? 0) === 404) {
+            return;
+        }
+
+        $this->logger->error(
+            \sprintf('[OpenDXP Campaigns][mailchimp][%s] %s failed.', $this->connectorName, $operation),
+        );
+
+        throw DriverException::apiError('mailchimp', $operation);
     }
 
     /**

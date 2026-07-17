@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:docs.pimcore.com)"
+      "WebFetch(domain:docs.pimcore.com)",
+      "WebFetch(domain:mailchimp.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Read(//Users/aaron/Developer/aarongerig/opendxp-trial/config/**)"
     ]
   }
 }

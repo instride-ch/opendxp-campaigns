@@ -27,8 +27,10 @@ use Instride\Bundle\OpenDxpCampaignsBundle\Driver\Log\LogDriver;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\Mailchimp\MailchimpDriver;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\MergeFieldMapping;
 use Instride\Bundle\OpenDxpCampaignsBundle\EventListener\MemberDataObjectSyncListener;
+use Instride\Bundle\OpenDxpCampaignsBundle\EventListener\SegmentSyncListener;
 use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\MergeFieldMapper;
 use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\NewsletterManager;
+use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\RemoteIdStore;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
@@ -54,6 +56,12 @@ class OpenDxpCampaignsExtension extends Extension
         $this->registerNewsletterManager($config['default_list_name'] ?? null, $container);
         $this->registerMemberServices($config['member_class'] ?? null, $config['email_field'], $container);
 
+        // Consumed by the Installer to detect (and, when missing, create) the matching
+        // Member / Segment / SegmentGroup class definitions (see services.yaml).
+        $container->setParameter('opendxp_campaigns.member_class', $config['member_class'] ?? null);
+        $container->setParameter('opendxp_campaigns.segments.segment_class', $config['segments']['segment_class'] ?? null);
+        $container->setParameter('opendxp_campaigns.segments.segment_group_class', $config['segments']['segment_group_class'] ?? null);
+
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../Resources/config'));
         $loader->load('services.yaml');
 
@@ -61,6 +69,11 @@ class OpenDxpCampaignsExtension extends Extension
         // so it adds no overhead to DataObject saves in installs that don't want it.
         if ($config['sync_on_save'] !== true) {
             $container->removeDefinition(MemberDataObjectSyncListener::class);
+        }
+
+        // Opt-in: same for the segment / segment-group sync listener.
+        if ($config['segments']['sync_on_save'] !== true) {
+            $container->removeDefinition(SegmentSyncListener::class);
         }
     }
 
@@ -195,6 +208,7 @@ class OpenDxpCampaignsExtension extends Extension
                 new Reference(DriverRegistry::class),
                 $defaultListName,
                 new Reference(MergeFieldMapper::class),
+                new Reference(RemoteIdStore::class),
             ]))->setAutowired(false),
         );
     }

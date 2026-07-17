@@ -19,6 +19,7 @@ namespace Instride\Bundle\OpenDxpCampaignsBundle\Driver\Log;
 
 use Carbon\CarbonInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterDriverInterface;
+use Instride\Bundle\OpenDxpCampaignsBundle\Contract\SegmentExportCapableInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Enum\SubscriptionStatus;
 use Psr\Log\LoggerInterface;
 
@@ -28,7 +29,7 @@ use Psr\Log\LoggerInterface;
  * Use this driver for local development or when testing newsletter integration
  * without connecting to a live provider account.
  */
-readonly class LogDriver implements NewsletterDriverInterface
+readonly class LogDriver implements NewsletterDriverInterface, SegmentExportCapableInterface
 {
     public function __construct(
         private string $connectorName,
@@ -106,6 +107,38 @@ readonly class LogDriver implements NewsletterDriverInterface
         ]);
 
         return [];
+    }
+
+    public function exportSegmentGroup(string $listId, string $name, ?string $remoteId): string
+    {
+        $this->log('exportSegmentGroup', $listId, '', ['name' => $name, 'remote_id' => $remoteId]);
+
+        // Deterministic fake id so local dev exercises the full store/read path.
+        return $remoteId ?? 'log_group_' . \md5($listId . $name);
+    }
+
+    public function deleteSegmentGroup(string $listId, string $remoteId): void
+    {
+        $this->log('deleteSegmentGroup', $listId, '', ['remote_id' => $remoteId]);
+    }
+
+    public function exportSegment(string $listId, string $groupRemoteId, string $name, ?string $remoteId): string
+    {
+        $this->log('exportSegment', $listId, '', [
+            'group_remote_id' => $groupRemoteId,
+            'name' => $name,
+            'remote_id' => $remoteId,
+        ]);
+
+        return $remoteId ?? 'log_segment_' . \md5($listId . $groupRemoteId . $name);
+    }
+
+    public function deleteSegment(string $listId, string $groupRemoteId, string $remoteId): void
+    {
+        $this->log('deleteSegment', $listId, '', [
+            'group_remote_id' => $groupRemoteId,
+            'remote_id' => $remoteId,
+        ]);
     }
 
     /**

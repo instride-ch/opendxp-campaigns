@@ -20,6 +20,7 @@ namespace Instride\Bundle\OpenDxpCampaignsBundle\Newsletter;
 use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterMemberInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterSegmentInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry;
+use Instride\Bundle\OpenDxpCampaignsBundle\Driver\ListConfig;
 use Instride\Bundle\OpenDxpCampaignsBundle\Enum\SubscriptionStatus;
 
 readonly class NewsletterManager implements NewsletterManagerInterface
@@ -28,6 +29,7 @@ readonly class NewsletterManager implements NewsletterManagerInterface
         private DriverRegistry $registry,
         private ?string $defaultListName,
         private MergeFieldMapper $mapper,
+        private RemoteIdStore $remoteIds,
     ) {}
 
     public function subscribe(NewsletterMemberInterface|string $member, ?string $listName = null): void
@@ -38,7 +40,7 @@ readonly class NewsletterManager implements NewsletterManagerInterface
 
         if ($member instanceof NewsletterMemberInterface) {
             $mergeFields = $this->mapper->toProvider($member, $listConfig->mergeFieldMappings);
-            $interestIds = $this->extractInterestIds($member);
+            $interestIds = $this->interestIdsForList($member, $listConfig);
         }
 
         $this->registry->getDriverForList($resolvedList)->subscribe(
@@ -66,7 +68,7 @@ readonly class NewsletterManager implements NewsletterManagerInterface
 
         if ($member instanceof NewsletterMemberInterface) {
             $mergeFields = $this->mapper->toProvider($member, $listConfig->mergeFieldMappings);
-            $interestIds = $this->extractInterestIds($member);
+            $interestIds = $this->interestIdsForList($member, $listConfig);
         }
 
         $this->registry->getDriverForList($resolvedList)->subscribeOrUpdate(
@@ -133,7 +135,7 @@ readonly class NewsletterManager implements NewsletterManagerInterface
             $listConfig->providerListId,
             $member->getNewsletterEmail(),
             $this->mapper->toProvider($member, $listConfig->mergeFieldMappings),
-            $this->extractInterestIds($member),
+            $this->interestIdsForList($member, $listConfig),
             $resolvedStatus,
         );
     }
@@ -162,15 +164,31 @@ readonly class NewsletterManager implements NewsletterManagerInterface
     }
 
     /**
+     * Resolve the provider interest IDs a member should carry on a specific list.
+     *
+     * Only segments whose group targets this list are considered, and only those
+     * already exported (i.e. with a stored remote ID) are included. Not-yet-exported
+     * segments are skipped; the segment sync flow / backup command backfill them.
+     *
      * @return string[]
      */
-    private function extractInterestIds(NewsletterMemberInterface $member): array
+    private function interestIdsForList(NewsletterMemberInterface $member, ListConfig $listConfig): array
     {
         $interestIds = [];
 
         foreach ($member->getNewsletterSegments() as $segment) {
-            if ($segment instanceof NewsletterSegmentInterface) {
-                $interestIds[] = $segment->getNewsletterSegmentIdentifier();
+            if (!$segment instanceof NewsletterSegmentInterface) {
+                continue;
+            }
+
+            if (!\in_array($listConfig->identifier, $segment->getNewsletterSegmentGroup()->getNewsletterListNames(), true)) {
+                continue;
+            }
+
+            $remoteId = $this->remoteIds->getRemoteId($segment, $listConfig->connectorName, $listConfig->identifier);
+
+            if ($remoteId !== null) {
+                $interestIds[] = $remoteId;
             }
         }
 

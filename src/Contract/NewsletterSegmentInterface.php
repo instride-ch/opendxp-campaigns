@@ -17,20 +17,27 @@ declare(strict_types=1);
 
 namespace Instride\Bundle\OpenDxpCampaignsBundle\Contract;
 
+use OpenDxp\Model\Element\ElementInterface;
+
 /**
  * Represents a single newsletter segment belonging to a group.
  *
- * Maps to a Mailchimp Interest within an Interest Category. The identifier
- * must match the Mailchimp Interest ID for the INTERESTED merge tag to work.
+ * Maps to a Mailchimp Interest within an Interest Category. The provider-side
+ * identifier is not part of this contract: it is assigned by the provider on
+ * export and persisted by the bundle in an OpenDXP Note (see RemoteIdStore).
+ * The segment name is used verbatim in the *|INTERESTED|* merge tag, so it must
+ * not contain the reserved characters * | : , (enforced on save).
  */
-interface NewsletterSegmentInterface
+interface NewsletterSegmentInterface extends ElementInterface
 {
-    /**
-     * Provider-specific segment identifier (e.g. Mailchimp interest ID).
-     */
-    public function getNewsletterSegmentIdentifier(): string;
-
     public function getNewsletterSegmentName(): string;
 
+    /**
+     * The group this segment belongs to.
+     *
+     * Implementations should resolve this by walking up the object tree to the
+     * nearest ancestor implementing NewsletterSegmentGroupInterface
+     * (see NewsletterSegmentTrait).
+     */
     public function getNewsletterSegmentGroup(): NewsletterSegmentGroupInterface;
 }

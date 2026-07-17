@@ -17,18 +17,32 @@ declare(strict_types=1);
 
 namespace Instride\Bundle\OpenDxpCampaignsBundle\Contract;
 
+use OpenDxp\Model\Element\ElementInterface;
+
 /**
  * Represents a group of newsletter segments.
  *
- * Maps to Mailchimp Interest Categories. The identifier must match the
- * provider-side category ID so the INTERESTED merge tag works correctly.
+ * Maps to a Mailchimp Interest Category. The provider-side category ID is not
+ * part of this contract: it is assigned by the provider on export and persisted
+ * by the bundle in an OpenDXP Note (see RemoteIdStore). Because an Interest
+ * Category belongs to a single audience, a group declares which configured
+ * lists it (and its segments) export to via getNewsletterListNames().
  */
-interface NewsletterSegmentGroupInterface
+interface NewsletterSegmentGroupInterface extends ElementInterface
 {
-    /**
-     * Provider-specific group identifier (e.g. Mailchimp interest category ID).
-     */
-    public function getNewsletterGroupIdentifier(): string;
+    public function getNewsletterSegmentGroupName(): string;
 
-    public function getNewsletterGroupName(): string;
+    /**
+     * @return iterable<NewsletterSegmentInterface>
+     */
+    public function getNewsletterSegments(): iterable;
+
+    /**
+     * Configured list identifiers (YAML keys under `lists:`) this group and its
+     * segments export to. Backed by a multiselect field populated by
+     * {@see \Instride\Bundle\OpenDxpCampaignsBundle\DataObject\ClassDefinition\OptionsProvider\NewsletterListOptionsProvider}.
+     *
+     * @return string[]
+     */
+    public function getNewsletterListNames(): array;
 }
