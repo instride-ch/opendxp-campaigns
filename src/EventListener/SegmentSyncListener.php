@@ -34,10 +34,10 @@ use Symfony\Component\Messenger\MessageBusInterface;
 /**
  * Keeps the newsletter provider in sync with OpenDXP segment groups and segments.
  *
- * On save it dispatches an idempotent (re-)export message per object. On delete it
+ * On save, it dispatches an idempotent (re-)export message per object. On delete it
  * captures the provider remote IDs while the object and its Notes still exist
  * (preDelete), then dispatches the delete message once the deletion is committed
- * (postDelete) so a failed delete never triggers a phantom provider delete.
+ * (postDelete), so a failed delete never triggers a phantom provider delete.
  *
  * Only wired when opendxp_campaigns.segments.sync_on_save is enabled.
  */

@@ -22,7 +22,6 @@ use OpenDxp\Model\Element\Note;
 use OpenDxp\Model\Element\Note\Listing as NoteListing;
 use OpenDxp\Model\Element\Service as ElementService;
 use Symfony\Contracts\Cache\CacheInterface;
-use Symfony\Contracts\Cache\ItemInterface;
 
 /**
  * Stores and reads provider-assigned remote IDs (Mailchimp interest / interest
@@ -127,9 +126,7 @@ class RemoteIdStore
 
         return $this->memo[$cacheKey] ??= $this->cache->get(
             $cacheKey,
-            function (ItemInterface $item) use ($object): array {
-                return $this->readNoteData($object);
-            },
+            fn () => $this->readNoteData($object),
         );
     }
 
@@ -199,7 +196,7 @@ class RemoteIdStore
         return \sprintf(
             'opendxp_campaigns_remoteids_%s_%s',
             ElementService::getElementType($object) ?? 'unknown',
-            (string) $object->getId(),
+            $object->getId(),
         );
     }
 }
