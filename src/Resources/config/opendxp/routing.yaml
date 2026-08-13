@@ -1,3 +1,0 @@
-opendxp_campaigns_webhooks:
-    resource: '@OpenDxpCampaignsBundle/Controller/Webhook/'
-    type: attribute

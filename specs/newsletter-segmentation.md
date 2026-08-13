@@ -299,7 +299,7 @@ The trial app's `BaseCustomerSegment` / `BaseCustomerSegmentGroup` are refactore
 + delete listeners gated by a new opt-in flag (see §11) — apps never edit `listeners.yaml`.
 
 ### 10.4 Installer class definitions
-Add JSON class definitions under `src/Resources/install/classes/`:
+Add JSON class definitions under `config/install/classes/`:
 - `NewsletterSegmentGroup.json` — fields: `name` (input), `lists` (**multiselect**, options
   provider = `NewsletterListOptionsProvider`), parent class = `AbstractNewsletterSegmentGroup`.
 - `NewsletterSegment.json` — field: `name` (input), parent class = `AbstractNewsletterSegment`.
@@ -374,7 +374,7 @@ backup command. Options: `--list=`, `--dry-run`.
 - `src/Messenger/Message/{SyncSegmentGroupMessage,SyncSegmentMessage,DeleteSegmentGroupMessage,DeleteSegmentMessage}.php`
 - `src/Messenger/Handler/{SyncSegmentGroupHandler,SyncSegmentHandler,DeleteSegmentGroupHandler,DeleteSegmentHandler}.php`
 - `src/Exception/SegmentPlacementException.php`
-- `src/Resources/install/classes/{NewsletterSegmentGroup,NewsletterSegment}.json`
+- `config/install/classes/{NewsletterSegmentGroup,NewsletterSegment}.json`
 
 **Modified**
 - `src/Contract/NewsletterSegmentInterface.php` — drop `getNewsletterSegmentIdentifier()`
@@ -383,7 +383,7 @@ backup command. Options: `--list=`, `--dry-run`.
 - `src/Driver/Log/LogDriver.php` — implement `SegmentExportCapableInterface`
 - `src/Newsletter/NewsletterManager.php` — list-aware interest resolution via `RemoteIdStore`
 - `src/DependencyInjection/{Configuration,OpenDxpCampaignsExtension}.php` — `segments` config + listener gating + `RemoteIdStore` + cache pool wiring
-- `src/Resources/config/services/{listeners,messenger}.yaml` + register `SegmentNameValidationListener`
+- `config/services/{listeners,messenger}.yaml` + register `SegmentNameValidationListener`
 - `src/Installer.php` — install/uninstall the two class definitions
 - App: `src/Model/DataObject/{BaseCustomer,BaseCustomerSegment,BaseCustomerSegmentGroup}.php` — extend new base classes, remove TODO stub, drop identifier usage
 

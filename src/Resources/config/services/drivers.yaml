@@ -1,8 +1,0 @@
-services:
-
-    # DriverRegistry is registered programmatically by the DI extension with
-    # all connector service references and list configs injected.
-    # It is listed here only for documentation purposes — do not define it twice.
-
-    # Template export service
-    Instride\Bundle\OpenDxpCampaignsBundle\Template\TemplateExportService: ~

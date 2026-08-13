@@ -76,7 +76,7 @@ src/
     ├── Configuration.php
     └── OpenDxpCampaignsExtension.php   # builds connector service defs programmatically
 
-src/Resources/config/
+config/
 ├── services.yaml                       # imports sub-files
 ├── services/
 │   ├── drivers.yaml                    # log driver registration
@@ -312,7 +312,7 @@ class TemplateExportService {
 | 10 | Messenger | Messenger/Message/*, Handler/*, Event/* | [x] |
 | 11 | Webhook Controller | Controller/Webhook/MailchimpWebhookController.php | [x] |
 | 12 | Console Command | Command/PushNewsletterCommand.php | [x] |
-| 13 | Service Config + Routing | Resources/config/** | [x] |
+| 13 | Service Config + Routing | config/** | [x] |
 | 14 | Bundle Wiring | OpenDxpCampaignsBundle.php (update) | [x] |
 | 15 | composer.json update | composer.json | [x] |
 | 16 | Tests + Tooling | tests/Unit/**, codeception.yml, phpstan.neon | [x] |

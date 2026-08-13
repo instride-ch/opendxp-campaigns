@@ -1,0 +1,12 @@
+services:
+
+  Instride\Bundle\OpenDxpCampaignsBundle\Controller\Webhook\MailchimpWebhookController:
+    arguments:
+      $registry: '@Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry'
+      $memberResolver: '@Instride\Bundle\OpenDxpCampaignsBundle\DataObject\MemberResolverInterface'
+      $incomingSync: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\IncomingMemberSync'
+      $suppressor: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\OutboundSyncSuppressor'
+      $logger: '@logger'
+    tags:
+      - { name: controller.service_arguments }
+    public: true

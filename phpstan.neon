@@ -11,9 +11,6 @@ parameters:
     scanFiles:
         - vendor/open-dxp/opendxp/stubs/dynamic-constants.php
 
-    excludePaths:
-        - src/Resources
-
     symfony:
         container_xml_path: var/cache/test/App_TestKernelTestDebugContainer.xml
 

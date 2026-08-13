@@ -94,7 +94,7 @@ class Installer extends SettingsStoreAwareInstaller
      */
     private function installFieldcollection(): void
     {
-        $jsonFile = __DIR__ . '/Resources/install/fieldcollections/' . self::FIELDCOLLECTION_KEY . '.json';
+        $jsonFile = __DIR__ . '/../config/install/fieldcollections/' . self::FIELDCOLLECTION_KEY . '.json';
 
         $fieldcollection = Definition::getByKey(self::FIELDCOLLECTION_KEY) ?? new Definition();
         $fieldcollection->setKey(self::FIELDCOLLECTION_KEY);
@@ -138,7 +138,7 @@ class Installer extends SettingsStoreAwareInstaller
             $class->setName($className);
             $class->setUserOwner(0);
 
-            $json = (string) \file_get_contents(__DIR__ . '/Resources/install/classes/' . $jsonBasename . '.json');
+            $json = (string) \file_get_contents(__DIR__ . '/../config/install/classes/' . $jsonBasename . '.json');
             $json = \str_replace(self::SEGMENT_CLASS_PLACEHOLDER, $segmentClassName, $json);
 
             ClassDefinitionService::importClassDefinitionFromJson($class, $json, true);
@@ -165,7 +165,7 @@ class Installer extends SettingsStoreAwareInstaller
     }
 
     /**
-     * Ordered map of target class name => install JSON basename (under Resources/install/classes).
+     * Ordered map of target class name => install JSON basename (under config/install/classes).
      *
      * Ordered group → segment → member so dependencies are created before dependents; uninstall
      * walks this in reverse.

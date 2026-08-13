@@ -1,0 +1,18 @@
+parameters:
+  opendxp_campaigns.queue.table_name: messenger_opendxp_campaigns
+
+framework:
+  messenger:
+    transports:
+      opendxp_campaigns_queue:
+        dsn: 'microsecs-doctrine://default'
+        options:
+          table_name: '%opendxp_campaigns.queue.table_name%'
+    routing:
+      Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Message\DeleteSegmentGroupMessage: opendxp_campaigns_queue
+      Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Message\DeleteSegmentMessage: opendxp_campaigns_queue
+      Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Message\SyncMemberToListMessage: opendxp_campaigns_queue
+      Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Message\SyncSegmentGroupMessage: opendxp_campaigns_queue
+      Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Message\SyncSegmentMessage: opendxp_campaigns_queue
+    buses:
+      opendxp_campaigns.bus: ~

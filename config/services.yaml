@@ -1,0 +1,27 @@
+imports:
+  - { resource: services/drivers.yaml }
+  - { resource: services/manager.yaml }
+  - { resource: services/messenger.yaml }
+  - { resource: services/commands.yaml }
+  - { resource: services/controllers.yaml }
+  - { resource: services/listeners.yaml }
+  - { resource: services/segments.yaml }
+
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+    public: false
+
+  Instride\Bundle\OpenDxpCampaignsBundle\Installer:
+    arguments:
+      $bundle: '@=service("kernel").getBundle("OpenDxpCampaignsBundle")'
+      $memberClass: '%opendxp_campaigns.member_class%'
+      $segmentClass: '%opendxp_campaigns.segments.segment_class%'
+      $segmentGroupClass: '%opendxp_campaigns.segments.segment_group_class%'
+    public: true
+
+  # Dynamic select options provider exposing all configured newsletter lists.
+  # Must be public so it can be referenced by service id in a class definition.
+  Instride\Bundle\OpenDxpCampaignsBundle\DataObject\ClassDefinition\OptionsProvider\NewsletterListOptionsProvider:
+    public: true

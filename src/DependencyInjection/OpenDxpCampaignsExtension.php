@@ -62,7 +62,7 @@ class OpenDxpCampaignsExtension extends Extension
         $container->setParameter('opendxp_campaigns.segments.segment_class', $config['segments']['segment_class'] ?? null);
         $container->setParameter('opendxp_campaigns.segments.segment_group_class', $config['segments']['segment_group_class'] ?? null);
 
-        $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../Resources/config'));
+        $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../../config'));
         $loader->load('services.yaml');
 
         // Opt-in: only wire the save-triggered outbound sync listener when enabled,
