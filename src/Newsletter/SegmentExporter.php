@@ -227,7 +227,7 @@ final readonly class SegmentExporter
      */
     private function withLock(string $kind, ?int $objectId, string $listName, callable $callback): mixed
     {
-        $lock = $this->lockFactory->createLock(\sprintf('opendxp_campaigns_%s_%s_%s', $kind, (string) $objectId, $listName));
+        $lock = $this->lockFactory->createLock(\sprintf('opendxp_campaigns_%s_%s_%s', $kind, $objectId, $listName));
         $lock->acquire(true);
 
         try {
