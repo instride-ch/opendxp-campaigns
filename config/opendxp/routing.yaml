@@ -1,3 +1,10 @@
 opendxp_campaigns_webhooks:
-  resource: '@OpenDxpCampaignsBundle/Controller/Webhook/'
+  resource: '@OpenDxpCampaignsBundle/src/Controller/Webhook/'
   type: attribute
+
+opendxp_campaigns_admin:
+  resource: '@OpenDxpCampaignsBundle/src/Controller/Admin/'
+  type: attribute
+  prefix: /admin/campaigns
+  options:
+    expose: true

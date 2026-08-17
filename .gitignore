@@ -2,5 +2,12 @@
 /vendor/
 /composer.lock
 
+# Codeception
+/tests/_output/
+/tests/_support/_generated/
+
 # IntelliJ
 /.idea/
+
+# Phpactor
+/.phpactor.json

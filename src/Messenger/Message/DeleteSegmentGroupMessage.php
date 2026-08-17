@@ -17,13 +17,15 @@ declare(strict_types=1);
 
 namespace Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Message;
 
+use Instride\Bundle\OpenDxpCampaignsBundle\Messenger\CampaignsMessageInterface;
+
 /**
  * Dispatched when a segment group DataObject is deleted.
  *
  * The provider remote IDs are captured at delete time (preDelete) because the
  * object and its Notes no longer exist when an async worker runs.
  */
-final readonly class DeleteSegmentGroupMessage
+final readonly class DeleteSegmentGroupMessage implements CampaignsMessageInterface
 {
     /**
      * @param array<string, string> $remoteIdsByList list identifier => provider group ID

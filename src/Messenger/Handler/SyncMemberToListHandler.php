@@ -35,7 +35,7 @@ readonly class SyncMemberToListHandler
     public function __invoke(SyncMemberToListMessage $message): void
     {
         $member = \is_numeric($message->memberValue)
-            ? $this->memberResolver->resolveById($message->memberValue)
+            ? $this->memberResolver->resolveById((int) $message->memberValue)
             : $this->memberResolver->resolveByEmail($message->memberValue);
 
         if ($member === null) {

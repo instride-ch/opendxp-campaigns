@@ -17,6 +17,8 @@ declare(strict_types=1);
 
 namespace Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Message;
 
+use Instride\Bundle\OpenDxpCampaignsBundle\Messenger\CampaignsMessageInterface;
+
 /**
  * Dispatched when a member's newsletter data should be synchronized to a list.
  *
@@ -27,7 +29,7 @@ namespace Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Message;
  * Either memberId or memberEmail must be provided so the handler can resolve
  * the concrete Member object via MemberResolverInterface.
  */
-final readonly class SyncMemberToListMessage
+final readonly class SyncMemberToListMessage implements CampaignsMessageInterface
 {
     public function __construct(
         public string $listName,
