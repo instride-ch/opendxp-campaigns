@@ -4,5 +4,10 @@ services:
   # all connector service references and list configs injected.
   # It is listed here only for documentation purposes — do not define it twice.
 
-  # Template export service
-  Instride\Bundle\OpenDxpCampaignsBundle\Template\TemplateExportService: ~
+  # Template export service. DriverRegistry is registered programmatically,
+  # so reference it by id.
+  Instride\Bundle\OpenDxpCampaignsBundle\Template\TemplateExportService:
+    arguments:
+      $registry: '@Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry'
+      $remoteIds: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\RemoteIdStore'
+      $hostUrl: '%opendxp_campaigns.template_export.host_url%'

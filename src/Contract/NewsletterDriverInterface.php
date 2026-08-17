@@ -63,8 +63,17 @@ interface NewsletterDriverInterface
      * Drivers should implement this as an idempotent operation so it is safe
      * to call repeatedly during resync.
      *
-     * @param array<string, scalar> $mergeFields
-     * @param string[]              $interestIds
+     * $mayOverwriteStatus is the caller's permission to change the status of a member the provider
+     * already knows. False means: create the member with this status if it is unknown, otherwise
+     * leave its status untouched, so a resync cannot undo an unsubscribe made at the provider.
+     * Merge fields and interests are written either way.
+     *
+     * A driver whose API cannot express this must refrain from writing the status at all rather
+     * than write it anyway — not changing it is always the safe reading.
+     *
+     * @param array<string, mixed> $mergeFields
+     * @param string[]             $interestIds
+     * @param string[]             $managedInterestIds
      */
     public function subscribeOrUpdate(
         string $listId,
@@ -72,12 +81,27 @@ interface NewsletterDriverInterface
         array $mergeFields = [],
         array $interestIds = [],
         SubscriptionStatus $status = SubscriptionStatus::SUBSCRIBED,
+        bool $mayOverwriteStatus = true,
+        array $managedInterestIds = [],
     ): void;
 
     /**
      * Permanently delete a member from the given provider list.
+     *
+     * Irreversible where the provider says so: Mailchimp refuses to re-import an address that was
+     * permanently deleted ("the contact must re-subscribe"). Use {@see self::archive()} whenever the
+     * address might come back.
      */
     public function delete(string $listId, string $email): void;
+
+    /**
+     * Take a member off the given provider list while keeping the address usable.
+     *
+     * Used when an address changed on our side: the entry under the previous address has to go, but
+     * a later change back to it must still be possible. A driver whose provider knows only one kind
+     * of removal, and that one reversible, may point this at the same call as delete().
+     */
+    public function archive(string $listId, string $email): void;
 
     /**
      * Retrieve raw member data from the provider, or null if not found.

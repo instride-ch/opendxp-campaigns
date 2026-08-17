@@ -30,10 +30,21 @@ interface TemplateExportCapableInterface
     /**
      * Create or update a mail template on the provider.
      *
-     * The driver is responsible for finding an existing template by name and
-     * updating it, or creating a new one if it does not exist.
+     * A template is identified by its provider ID, which the caller carries. Without one, or
+     * when the provider no longer has it, the driver creates a new template.
      *
      * @return string the provider-side template ID
      */
     public function exportTemplate(TemplateExport $template): string;
+
+    /**
+     * Hides the provider's own placeholders from a rewriting pass.
+     *
+     * Making a document's paths absolute treats anything that is not a URL as a relative one, and
+     * a placeholder used as a link target looks exactly like that. Only the driver knows what its
+     * placeholders look like, so only it can put them out of reach and back again.
+     */
+    public function protectPlaceholders(string $html): string;
+
+    public function restorePlaceholders(string $html): string;
 }

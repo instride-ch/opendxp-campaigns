@@ -64,4 +64,28 @@ interface SegmentExportCapableInterface
      * Must tolerate an already-absent segment (treat "not found" as success).
      */
     public function deleteSegment(string $listId, string $groupRemoteId, string $remoteId): void;
+
+    /**
+     * Every segment group the provider currently holds for this list, keyed by remote ID.
+     *
+     * A full pass needs the provider's own view to find what it still holds after a local delete
+     * never reached it. Event-driven export alone can never see those.
+     *
+     * @return array<string, string> remote ID => name
+     */
+    public function listSegmentGroups(string $listId): array;
+
+    /**
+     * Every segment the provider currently holds within one group, keyed by remote ID.
+     *
+     * @return array<string, string> remote ID => name
+     */
+    public function listSegments(string $listId, string $groupRemoteId): array;
+
+    /**
+     * Every member of the list with the interests they currently hold.
+     *
+     * @return iterable<string, string[]> email address => remote IDs of the interests it has
+     */
+    public function listMemberInterests(string $listId): iterable;
 }
