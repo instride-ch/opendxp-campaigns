@@ -20,6 +20,7 @@ namespace Instride\Bundle\OpenDxpCampaignsBundle\DataObject;
 use Carbon\Carbon;
 use Instride\Bundle\OpenDxpCampaignsBundle\Enum\SubscriptionStatus;
 use OpenDxp\Model\DataObject\Fieldcollection;
+use OpenDxp\Model\DataObject\Fieldcollection\Data\AbstractData;
 use OpenDxp\Model\DataObject\Fieldcollection\Data\CampaignNewsletterSubscription;
 
 /**
@@ -46,6 +47,44 @@ trait NewsletterSubscriptionTrait
             $listKey,
             static function (CampaignNewsletterSubscription $item) use ($status): void {
                 $item->setStatus($status->value);
+            },
+        );
+    }
+
+    public function getNewsletterProviderStatus(string $listKey): ?SubscriptionStatus
+    {
+        foreach ($this->getSubscriptionItemsForList($listKey) as $item) {
+            return SubscriptionStatus::tryFrom($item->getProviderStatus() ?? '');
+        }
+
+        return null;
+    }
+
+    public function setNewsletterProviderStatus(string $listKey, SubscriptionStatus $status): void
+    {
+        $this->updateSubscriptionItemForList(
+            $listKey,
+            static function (CampaignNewsletterSubscription $item) use ($status): void {
+                $item->setProviderStatus($status->value);
+            },
+        );
+    }
+
+    public function getNewsletterProviderEmail(string $listKey): ?string
+    {
+        foreach ($this->getSubscriptionItemsForList($listKey) as $item) {
+            return $item->getProviderEmail();
+        }
+
+        return null;
+    }
+
+    public function setNewsletterProviderEmail(string $listKey, string $email): void
+    {
+        $this->updateSubscriptionItemForList(
+            $listKey,
+            static function (CampaignNewsletterSubscription $item) use ($email): void {
+                $item->setProviderEmail($email);
             },
         );
     }
@@ -116,7 +155,13 @@ trait NewsletterSubscriptionTrait
         $this->setNewsletterSubscriptions($collection);
     }
 
+    /**
+     * @return Fieldcollection<AbstractData>|null
+     */
     abstract public function getNewsletterSubscriptions(): ?Fieldcollection;
 
+    /**
+     * @param Fieldcollection<AbstractData>|null $newsletterSubscriptions
+     */
     abstract public function setNewsletterSubscriptions(?Fieldcollection $newsletterSubscriptions): static;
 }

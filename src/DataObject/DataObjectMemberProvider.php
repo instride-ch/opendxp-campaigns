@@ -30,7 +30,7 @@ use OpenDxp\Model\DataObject\Listing\Concrete as ConcreteListing;
  */
 final readonly class DataObjectMemberProvider implements MemberProviderInterface
 {
-    private const int BATCH_SIZE = 100;
+    use BatchedListingTrait;
 
     /**
      * @param class-string<Concrete&NewsletterMemberInterface> $memberClass
@@ -39,12 +39,12 @@ final readonly class DataObjectMemberProvider implements MemberProviderInterface
 
     public function findAll(): iterable
     {
-        yield from $this->iterateBatched();
+        yield from $this->members();
     }
 
     public function findByList(string $listName): iterable
     {
-        yield from $this->iterateBatched( static function (ConcreteListing $listing) use ($listName): void {
+        yield from $this->members(static function (ConcreteListing $listing) use ($listName): void {
             $listing->addFieldCollection('CampaignNewsletterSubscription');
             $listing->setCondition('`CampaignNewsletterSubscription`.`newsletterList` = :list', [
                 'list' => $listName,
@@ -52,38 +52,30 @@ final readonly class DataObjectMemberProvider implements MemberProviderInterface
         });
     }
 
-    private function iterateBatched(?callable $configure = null): iterable
+    public function hasMemberSyncedFromProvider(string $listName): bool
     {
-        $offset = 0;
+        $listingClass = $this->memberClass . '\\Listing';
+        /** @var ConcreteListing $listing */
+        $listing = new $listingClass();
+        $listing->addFieldCollection('CampaignNewsletterSubscription');
+        $listing->setCondition(
+            '`CampaignNewsletterSubscription`.`newsletterList` = :list'
+            . ' AND `CampaignNewsletterSubscription`.`lastSyncedAt` IS NOT NULL',
+            ['list' => $listName],
+        );
 
-        do {
-            $listing = $this->createListing();
-            $listing->setLimit(self::BATCH_SIZE);
-            $listing->setOffset($offset);
-
-            if ($configure !== null) {
-                $configure($listing);
-            }
-
-            $objects = $listing->getObjects();
-            $fetched = \count($objects);
-
-            foreach ($objects as $object) {
-                if ($object instanceof NewsletterMemberInterface) {
-                    yield $object;
-                }
-            }
-
-            unset($objects, $listing);
-            $offset += self::BATCH_SIZE;
-        } while ($fetched === self::BATCH_SIZE);
+        return $listing->count() > 0;
     }
 
-    private function createListing(): ConcreteListing
+    /**
+     * @return iterable<NewsletterMemberInterface>
+     */
+    private function members(?callable $configure = null): iterable
     {
-        /** @var class-string<ConcreteListing> $listingClass */
-        $listingClass = $this->memberClass . '\\Listing';
-
-        return new $listingClass();
+        foreach ($this->iterateBatched($this->memberClass, $configure) as $object) {
+            if ($object instanceof NewsletterMemberInterface) {
+                yield $object;
+            }
+        }
     }
 }

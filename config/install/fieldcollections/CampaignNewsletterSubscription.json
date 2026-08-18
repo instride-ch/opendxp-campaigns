@@ -41,8 +41,8 @@
                         "columnLength": 190,
                         "regex": "",
                         "unique": false,
-                        "name": "listKey",
-                        "title": "List Key",
+                        "name": "newsletterList",
+                        "title": "Newsletter List",
                         "tooltip": "",
                         "mandatory": true,
                         "noteditable": false,
@@ -71,10 +71,22 @@
                         "permissions": null,
                         "datatype": "data",
                         "options": [
-                            {"key": "subscribed", "value": "subscribed"},
-                            {"key": "unsubscribed", "value": "unsubscribed"},
-                            {"key": "pending", "value": "pending"},
-                            {"key": "cleaned", "value": "cleaned"}
+                            {
+                                "key": "subscribed",
+                                "value": "subscribed"
+                            },
+                            {
+                                "key": "unsubscribed",
+                                "value": "unsubscribed"
+                            },
+                            {
+                                "key": "pending",
+                                "value": "pending"
+                            },
+                            {
+                                "key": "cleaned",
+                                "value": "cleaned"
+                            }
                         ],
                         "columnLength": 190,
                         "dynamicOptions": null,
@@ -82,6 +94,66 @@
                         "invisible": false,
                         "visibleGridView": true,
                         "visibleSearch": true
+                    },
+                    {
+                        "fieldtype": "select",
+                        "width": 400,
+                        "defaultValue": null,
+                        "name": "providerStatus",
+                        "title": "Provider Status",
+                        "tooltip": "Last status seen at the provider. Compared against the subscription status to decide whether a push may overwrite it.",
+                        "mandatory": false,
+                        "noteditable": false,
+                        "index": false,
+                        "locked": false,
+                        "style": "",
+                        "permissions": null,
+                        "datatype": "data",
+                        "options": [
+                            {
+                                "key": "subscribed",
+                                "value": "subscribed"
+                            },
+                            {
+                                "key": "unsubscribed",
+                                "value": "unsubscribed"
+                            },
+                            {
+                                "key": "pending",
+                                "value": "pending"
+                            },
+                            {
+                                "key": "cleaned",
+                                "value": "cleaned"
+                            }
+                        ],
+                        "columnLength": 190,
+                        "dynamicOptions": null,
+                        "relationType": false,
+                        "invisible": false,
+                        "visibleGridView": false,
+                        "visibleSearch": true
+                    },
+                    {
+                        "fieldtype": "input",
+                        "width": 400,
+                        "columnLength": 190,
+                        "regex": "",
+                        "unique": false,
+                        "name": "providerEmail",
+                        "title": "Provider Email",
+                        "tooltip": "Email address the provider holds this member under. Differs from the member's address only until the next push, which recreates the entry.",
+                        "mandatory": false,
+                        "noteditable": false,
+                        "index": false,
+                        "locked": false,
+                        "style": "",
+                        "permissions": null,
+                        "datatype": "data",
+                        "relationType": false,
+                        "invisible": false,
+                        "visibleGridView": false,
+                        "visibleSearch": false
                     },
                     {
                         "fieldtype": "input",
@@ -110,7 +182,7 @@
                         "defaultValue": null,
                         "name": "lastSyncedAt",
                         "title": "Last Synced At",
-                        "tooltip": "Timestamp of the last successful sync to the provider",
+                        "tooltip": "When something last came back from the provider for this list, by pull or webhook. Only the inbound path writes it, and the push guard reads it to tell whether a list was ever pulled into.",
                         "mandatory": false,
                         "noteditable": false,
                         "index": false,

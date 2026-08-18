@@ -21,6 +21,7 @@ use Instride\Bundle\OpenDxpCampaignsBundle\DataObject\DataObjectMemberProvider;
 use Instride\Bundle\OpenDxpCampaignsBundle\DataObject\DataObjectMemberResolver;
 use Instride\Bundle\OpenDxpCampaignsBundle\DataObject\MemberProviderInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\DataObject\MemberResolverInterface;
+use Instride\Bundle\OpenDxpCampaignsBundle\DataObject\UnconfiguredMemberSource;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\ListConfig;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\Log\LogDriver;
@@ -28,9 +29,14 @@ use Instride\Bundle\OpenDxpCampaignsBundle\Driver\Mailchimp\MailchimpDriver;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\MergeFieldMapping;
 use Instride\Bundle\OpenDxpCampaignsBundle\EventListener\MemberDataObjectSyncListener;
 use Instride\Bundle\OpenDxpCampaignsBundle\EventListener\SegmentSyncListener;
+use Instride\Bundle\OpenDxpCampaignsBundle\DataObject\DataObjectSegmentProvider;
+use Instride\Bundle\OpenDxpCampaignsBundle\DataObject\SegmentProviderInterface;
+use Instride\Bundle\OpenDxpCampaignsBundle\DataObject\EmptySegmentProvider;
 use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\MergeFieldMapper;
 use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\NewsletterManager;
+use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\OutboundSyncSuppressor;
 use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\RemoteIdStore;
+use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\SegmentExporter;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
@@ -54,13 +60,25 @@ class OpenDxpCampaignsExtension extends Extension
         $this->registerDriverRegistry($connectorRefs, $listConfigs, $container);
         $this->registerMergeFieldMapper($container);
         $this->registerNewsletterManager($config['default_list_name'] ?? null, $container);
-        $this->registerMemberServices($config['member_class'] ?? null, $config['email_field'], $container);
+        $this->registerSegmentServices(
+            $config['segments']['segment_class'] ?? null,
+            $config['segments']['segment_group_class'] ?? null,
+            $container,
+        );
+        $this->registerMemberServices(
+            $config['member_class'] ?? null,
+            $config['email_field'],
+            $config['member_resolver'] ?? null,
+            $config['member_provider'] ?? null,
+            $container,
+        );
 
         // Consumed by the Installer to detect (and, when missing, create) the matching
         // Member / Segment / SegmentGroup class definitions (see services.yaml).
         $container->setParameter('opendxp_campaigns.member_class', $config['member_class'] ?? null);
         $container->setParameter('opendxp_campaigns.segments.segment_class', $config['segments']['segment_class'] ?? null);
         $container->setParameter('opendxp_campaigns.segments.segment_group_class', $config['segments']['segment_group_class'] ?? null);
+        $container->setParameter('opendxp_campaigns.template_export.host_url', $config['template_export']['host_url'] ?? null);
 
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../../config'));
         $loader->load('services.yaml');
@@ -92,7 +110,7 @@ class OpenDxpCampaignsExtension extends Extension
 
         foreach ($connectors as $name => $connectorConfig) {
             $serviceId = \sprintf('opendxp_campaigns.connector.%s', $name);
-            $definition = $this->createDriverDefinition($name, $connectorConfig['driver'], $connectorConfig['config'] ?? []);
+            $definition = $this->createDriverDefinition($name, $connectorConfig['driver'], $connectorConfig['config']);
             $container->setDefinition($serviceId, $definition);
             $refs[$name] = new Reference($serviceId);
         }
@@ -137,7 +155,7 @@ class OpenDxpCampaignsExtension extends Extension
         $listConfigs = [];
 
         foreach ($lists as $name => $listConfig) {
-            $mergeFieldMappings = $this->buildMergeFieldMappings($listConfig['merge_fields'] ?? []);
+            $mergeFieldMappings = $this->buildMergeFieldMappings($listConfig['merge_fields']);
 
             $listConfigs[$name] = new Definition(ListConfig::class, [
                 $name,
@@ -209,22 +227,82 @@ class OpenDxpCampaignsExtension extends Extension
                 $defaultListName,
                 new Reference(MergeFieldMapper::class),
                 new Reference(RemoteIdStore::class),
+                new Reference(OutboundSyncSuppressor::class),
+                new Reference('logger'),
+                new Reference(SegmentExporter::class),
             ]))->setAutowired(false),
         );
     }
 
-    private function registerMemberServices(?string $memberClass, string $emailField, ContainerBuilder $container): void
-    {
-        if ($memberClass === null) {
-            return;
+    /**
+     * Same shape as the member services: the configured classes when they are there, a stand-in
+     * that throws when they are not, so a fresh install still compiles.
+     */
+    private function registerSegmentServices(
+        ?string $segmentClass,
+        ?string $segmentGroupClass,
+        ContainerBuilder $container,
+    ): void {
+        $configured = $segmentClass !== null && $segmentGroupClass !== null;
+
+        if ($configured) {
+            $container->setDefinition(
+                DataObjectSegmentProvider::class,
+                (new Definition(DataObjectSegmentProvider::class, [$segmentClass, $segmentGroupClass]))
+                    ->setAutowired(false),
+            );
         }
 
-        $resolverDef = (new Definition(DataObjectMemberResolver::class, [$memberClass, $emailField]))->setAutowired(false);
-        $container->setDefinition(DataObjectMemberResolver::class, $resolverDef);
-        $container->setAlias(MemberResolverInterface::class, DataObjectMemberResolver::class)->setPublic(false);
+        if (!$configured) {
+            $container->setDefinition(
+                EmptySegmentProvider::class,
+                (new Definition(EmptySegmentProvider::class))->setAutowired(false),
+            );
+        }
 
-        $providerDef = (new Definition(DataObjectMemberProvider::class, [$memberClass]))->setAutowired(false);
-        $container->setDefinition(DataObjectMemberProvider::class, $providerDef);
-        $container->setAlias(MemberProviderInterface::class, DataObjectMemberProvider::class)->setPublic(false);
+        $container->setAlias(
+            SegmentProviderInterface::class,
+            $configured ? DataObjectSegmentProvider::class : EmptySegmentProvider::class,
+        )->setPublic(false);
+    }
+
+    /**
+     * Three ways to get a resolver and a provider, in order: a service the application registered,
+     * a DataObject class the bundle wraps, or a stand-in that throws when something asks it for a
+     * member. The last one exists so the container still compiles on a fresh install — see
+     * UnconfiguredMemberResolver.
+     */
+    private function registerMemberServices(
+        ?string $memberClass,
+        string $emailField,
+        ?string $memberResolver,
+        ?string $memberProvider,
+        ContainerBuilder $container,
+    ): void {
+        if ($memberClass !== null) {
+            $container->setDefinition(
+                DataObjectMemberResolver::class,
+                (new Definition(DataObjectMemberResolver::class, [$memberClass, $emailField]))->setAutowired(false),
+            );
+            $container->setDefinition(
+                DataObjectMemberProvider::class,
+                (new Definition(DataObjectMemberProvider::class, [$memberClass]))->setAutowired(false),
+            );
+        }
+
+        if ($memberClass === null && ($memberResolver === null || $memberProvider === null)) {
+            $container->setDefinition(
+                UnconfiguredMemberSource::class,
+                (new Definition(UnconfiguredMemberSource::class))->setAutowired(false),
+            );
+        }
+
+        $resolverId = $memberResolver
+            ?? ($memberClass !== null ? DataObjectMemberResolver::class : UnconfiguredMemberSource::class);
+        $providerId = $memberProvider
+            ?? ($memberClass !== null ? DataObjectMemberProvider::class : UnconfiguredMemberSource::class);
+
+        $container->setAlias(MemberResolverInterface::class, $resolverId)->setPublic(false);
+        $container->setAlias(MemberProviderInterface::class, $providerId)->setPublic(false);
     }
 }
