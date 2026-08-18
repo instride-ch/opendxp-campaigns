@@ -29,6 +29,7 @@ use OpenDxp\Event\Model\DataObjectEvent;
 use OpenDxp\Model\DataObject\Concrete;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Exception\ExceptionInterface;
+use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\OutboundSyncSuppressor;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
@@ -55,10 +56,17 @@ final class SegmentSyncListener
         private readonly RemoteIdStore $remoteIds,
         private readonly MessageBusInterface $bus,
         private readonly LoggerInterface $logger,
+        private readonly OutboundSyncSuppressor $suppressor,
     ) {}
 
     public function onPostWrite(DataObjectEvent $event): void
     {
+        // The change originates from an inbound provider sync that is persisting the object —
+        // don't echo it straight back to the provider.
+        if ($this->suppressor->isSuppressed()) {
+            return;
+        }
+
         if ($this->isVersionOnly($event)) {
             return;
         }

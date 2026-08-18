@@ -28,6 +28,7 @@ services:
       $remoteIds: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\RemoteIdStore'
       $lockFactory: '@opendxp_campaigns.lock.factory'
       $logger: '@logger'
+      $segments: '@Instride\Bundle\OpenDxpCampaignsBundle\DataObject\SegmentProviderInterface'
 
   # Message handlers (auto-tagged via #[AsMessageHandler]).
   Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Handler\SyncSegmentGroupHandler:
@@ -57,6 +58,7 @@ services:
       $remoteIds: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\RemoteIdStore'
       $bus: '@Symfony\Component\Messenger\MessageBusInterface'
       $logger: '@logger'
+      $suppressor: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\OutboundSyncSuppressor'
     tags:
       - { name: kernel.event_listener, event: opendxp.dataobject.postAdd, method: onPostWrite }
       - { name: kernel.event_listener, event: opendxp.dataobject.postUpdate, method: onPostWrite }

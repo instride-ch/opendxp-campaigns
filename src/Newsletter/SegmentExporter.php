@@ -17,9 +17,13 @@ declare(strict_types=1);
 
 namespace Instride\Bundle\OpenDxpCampaignsBundle\Newsletter;
 
+use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterDriverInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterSegmentGroupInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterSegmentInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Contract\SegmentExportCapableInterface;
+use Instride\Bundle\OpenDxpCampaignsBundle\Exception\ListNotFoundException;
+use Instride\Bundle\OpenDxpCampaignsBundle\Exception\SegmentPlacementException;
+use Instride\Bundle\OpenDxpCampaignsBundle\DataObject\SegmentProviderInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Lock\LockFactory;
@@ -37,13 +41,14 @@ use Symfony\Component\Lock\LockFactory;
  * so a group is never created twice — the reason interest-category creation, which
  * is not idempotent on the provider side, is safe here.
  */
-final readonly class SegmentExporter
+final readonly class SegmentExporter implements ManagedSegmentInterestsInterface
 {
     public function __construct(
         private DriverRegistry $registry,
         private RemoteIdStore $remoteIds,
         private LockFactory $lockFactory,
         private LoggerInterface $logger,
+        private SegmentProviderInterface $segments,
     ) {}
 
     /**
@@ -81,8 +86,8 @@ final readonly class SegmentExporter
                 continue;
             }
 
-            $this->withLock('seg', $segment->getId(), $listName, function () use ($segment, $group, $listConfig, $listName, $groupRemoteId): void {
-                /** @var SegmentExportCapableInterface $driver */
+            $this->withLock('seg', $segment->getId(), $listName, function () use ($segment, $listConfig, $listName, $groupRemoteId): void {
+                /** @var NewsletterDriverInterface&SegmentExportCapableInterface $driver */
                 $driver = $this->registry->getDriverForList($listName);
 
                 $remoteId = $this->remoteIds->getRemoteId($segment, $listConfig->connectorName, $listName);
@@ -93,8 +98,157 @@ final readonly class SegmentExporter
                     $remoteId,
                 );
 
-                $this->remoteIds->setRemoteId($segment, $listConfig->connectorName, $listName, $newId);
+                if ($newId !== $remoteId) {
+                    $this->remoteIds->setRemoteId($segment, $listConfig->connectorName, $listName, $newId);
+                }
             });
+        }
+    }
+
+    /**
+     * Walks every group and segment for one list and makes the provider match.
+     *
+     * The event-driven export only ever sees the object that changed, so a dropped Messenger
+     * message leaves a segment that exists here and nowhere else, and a delete that never arrived
+     * leaves one there and nowhere here. Neither is visible from a single object; both are obvious
+     * from a full pass. This is what the Customer Management Framework does on every CLI run
+     * (Mailchimp::updateSegmentGroups + SegmentExporter::deleteNonExistingSegmentsFromGroup) — here
+     * it is the recovery path rather than the normal one.
+     *
+     * @return array{groups: int, segments: int, removed_groups: int, removed_segments: int}
+     */
+    public function syncList(string $listName, bool $dryRun = false): array
+    {
+        $counts = ['groups' => 0, 'segments' => 0, 'removed_groups' => 0, 'removed_segments' => 0];
+
+        if (!$this->supportsSegments($listName)) {
+            return $counts;
+        }
+
+        $listConfig = $this->registry->getListConfig($listName);
+        /** @var NewsletterDriverInterface&SegmentExportCapableInterface $driver */
+        $driver = $this->registry->getDriverForList($listName);
+
+        $keep = [];
+
+        foreach ($this->segments->allGroups() as $group) {
+            if (!\in_array($listName, $group->getNewsletterListNames(), true)) {
+                continue;
+            }
+
+            $remoteId = $dryRun
+                ? $this->remoteIds->getRemoteId($group, $listConfig->connectorName, $listName)
+                : $this->upsertGroup($group, $listName);
+
+            $counts['groups']++;
+
+            if ($remoteId !== null && $remoteId !== '') {
+                $keep[$remoteId] = [];
+            }
+        }
+
+        foreach ($this->segmentsOfList($listName) as [$segment, $group]) {
+            if (!$dryRun) {
+                $this->exportSegment($segment);
+            }
+
+            $counts['segments']++;
+
+            $groupRemoteId = $this->remoteIds->getRemoteId($group, $listConfig->connectorName, $listName);
+            $segmentRemoteId = $this->remoteIds->getRemoteId($segment, $listConfig->connectorName, $listName);
+
+            if ($groupRemoteId !== null && $segmentRemoteId !== null) {
+                $keep[$groupRemoteId][$segmentRemoteId] = true;
+            }
+        }
+
+        foreach ($driver->listSegmentGroups($listConfig->providerListId) as $remoteId => $name) {
+            if (!isset($keep[$remoteId])) {
+                $this->logger->notice('[OpenDXP Campaigns] Segment group {name} exists only at the provider.', [
+                    'name' => $name,
+                    'remote_id' => $remoteId,
+                    'list_name' => $listName,
+                    'dry_run' => $dryRun,
+                ]);
+
+                if (!$dryRun) {
+                    $driver->deleteSegmentGroup($listConfig->providerListId, $remoteId);
+                }
+
+                $counts['removed_groups']++;
+
+                continue;
+            }
+
+            foreach ($driver->listSegments($listConfig->providerListId, $remoteId) as $segmentRemoteId => $segmentName) {
+                if (isset($keep[$remoteId][$segmentRemoteId])) {
+                    continue;
+                }
+
+                $this->logger->notice('[OpenDXP Campaigns] Segment {name} exists only at the provider.', [
+                    'name' => $segmentName,
+                    'remote_id' => $segmentRemoteId,
+                    'list_name' => $listName,
+                    'dry_run' => $dryRun,
+                ]);
+
+                if (!$dryRun) {
+                    $driver->deleteSegment($listConfig->providerListId, $remoteId, $segmentRemoteId);
+                }
+
+                $counts['removed_segments']++;
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
+     * Every segment remote ID this list manages, so a member push can say which interests a member
+     * does not have. Only what we exported ourselves — an interest somebody created at the provider
+     * by hand is none of our business, which is how the Customer Management Framework draws the line
+     * too (Mailchimp::buildCustomerSegmentData walks its own exportable segments).
+     *
+     * @return string[]
+     */
+    public function managedSegmentRemoteIds(string $listName): array
+    {
+        if (!$this->supportsSegments($listName)) {
+            return [];
+        }
+
+        $listConfig = $this->registry->getListConfig($listName);
+        $remoteIds = [];
+
+        foreach ($this->segmentsOfList($listName) as [$segment]) {
+            $remoteId = $this->remoteIds->getRemoteId($segment, $listConfig->connectorName, $listName);
+
+            if ($remoteId !== null) {
+                $remoteIds[] = $remoteId;
+            }
+        }
+
+        return $remoteIds;
+    }
+
+    /**
+     * Every segment this list exports, with the group it sits under.
+     *
+     * The group is yielded along because every caller needs it and asking the segment a second
+     * time can throw — a segment lying outside a group is skipped here, once, for all of them.
+     *
+     * @return iterable<array{NewsletterSegmentInterface, NewsletterSegmentGroupInterface}>
+     */
+    public function segmentsOfList(string $listName): iterable
+    {
+        foreach ($this->segments->allSegments() as $segment) {
+            $group = $this->groupOf($segment);
+
+            if ($group === null || !\in_array($listName, $group->getNewsletterListNames(), true)) {
+                continue;
+            }
+
+            yield [$segment, $group];
         }
     }
 
@@ -109,7 +263,7 @@ final readonly class SegmentExporter
             }
 
             $listConfig = $this->registry->getListConfig($listName);
-            /** @var SegmentExportCapableInterface $driver */
+            /** @var NewsletterDriverInterface&SegmentExportCapableInterface $driver */
             $driver = $this->registry->getDriverForList($listName);
 
             $driver->deleteSegmentGroup($listConfig->providerListId, $remoteId);
@@ -127,7 +281,7 @@ final readonly class SegmentExporter
             }
 
             $listConfig = $this->registry->getListConfig($listName);
-            /** @var SegmentExportCapableInterface $driver */
+            /** @var NewsletterDriverInterface&SegmentExportCapableInterface $driver */
             $driver = $this->registry->getDriverForList($listName);
 
             $driver->deleteSegment($listConfig->providerListId, $ids['group_remote_id'], $ids['remote_id']);
@@ -147,7 +301,7 @@ final readonly class SegmentExporter
         $listConfig = $this->registry->getListConfig($listName);
 
         return $this->withLock('grp', $group->getId(), $listName, function () use ($group, $listConfig, $listName): string {
-            /** @var SegmentExportCapableInterface $driver */
+            /** @var NewsletterDriverInterface&SegmentExportCapableInterface $driver */
             $driver = $this->registry->getDriverForList($listName);
 
             $remoteId = $this->remoteIds->getRemoteId($group, $listConfig->connectorName, $listName);
@@ -157,7 +311,9 @@ final readonly class SegmentExporter
                 $remoteId,
             );
 
-            $this->remoteIds->setRemoteId($group, $listConfig->connectorName, $listName, $newId);
+            if ($newId !== $remoteId) {
+                $this->remoteIds->setRemoteId($group, $listConfig->connectorName, $listName, $newId);
+            }
 
             return $newId;
         });
@@ -195,16 +351,48 @@ final readonly class SegmentExporter
                 continue;
             }
 
-            /** @var SegmentExportCapableInterface $driver */
+            /** @var NewsletterDriverInterface&SegmentExportCapableInterface $driver */
             $driver = $this->registry->getDriverForList($listName);
             $driver->deleteSegmentGroup($listConfig->providerListId, $remoteId);
             $this->remoteIds->removeRemoteId($group, $listConfig->connectorName, $listName);
         }
     }
 
+    /**
+     * The group a segment sits under, or null when it sits under none.
+     *
+     * A single-object export may fail loudly — somebody just saved that segment and can move it.
+     * A pass over every segment may not: one object in the wrong place would otherwise stop the
+     * sweep and, through the managed interests, every member push with it.
+     */
+    private function groupOf(NewsletterSegmentInterface $segment): ?NewsletterSegmentGroupInterface
+    {
+        try {
+            return $segment->getNewsletterSegmentGroup();
+        } catch (SegmentPlacementException $exception) {
+            $this->logger->warning('[OpenDXP Campaigns] {message} Skipping it.', [
+                'message' => $exception->getMessage(),
+                'segment_id' => $segment->getId(),
+            ]);
+
+            return null;
+        }
+    }
+
     private function supportsSegments(string $listName): bool
     {
-        $driver = $this->registry->getDriverForList($listName);
+        try {
+            $driver = $this->registry->getDriverForList($listName);
+        } catch (ListNotFoundException) {
+            // A group may still name a list that was removed from the configuration. Skipping it
+            // keeps the remaining lists exportable instead of losing the whole run to one stale name.
+            $this->logger->warning(
+                '[OpenDXP Campaigns] List "{list}" is no longer configured; skipping segment export for it.',
+                ['list' => $listName],
+            );
+
+            return false;
+        }
 
         if ($driver instanceof SegmentExportCapableInterface) {
             return true;
