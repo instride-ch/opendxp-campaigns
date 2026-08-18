@@ -15,8 +15,11 @@ use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterSegmentInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Enum\SubscriptionStatus;
 use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\MergeFieldMapper;
 use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\NewsletterManager;
+use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\OutboundSyncSuppressor;
 use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\RemoteIdStore;
+use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\ManagedSegmentInterestsInterface;
 use PHPUnit\Framework\MockObject\MockObject;
+use Psr\Log\NullLogger;
 use function Symfony\Component\String\u;
 
 /**
@@ -58,15 +61,15 @@ class NewsletterManagerTest extends Unit
             listConfigs: ['default_newsletter' => $this->listConfig],
         );
 
-        $this->manager = new NewsletterManager($this->registry, 'default_newsletter', $this->mapper, $this->remoteIds);
+        $this->manager = new NewsletterManager($this->registry, 'default_newsletter', $this->mapper, $this->remoteIds, new OutboundSyncSuppressor(), new NullLogger(), $this->segmentExporter());
     }
 
     public function testSubscribeWithStringEmail(): void
     {
         $this->driver
             ->expects($this->once())
-            ->method('subscribe')
-            ->with('abc123', 'jane@example.com', [], []);
+            ->method('subscribeOrUpdate')
+            ->with('abc123', 'jane@example.com', [], [], SubscriptionStatus::SUBSCRIBED);
 
         $this->manager->subscribe('jane@example.com');
     }
@@ -77,8 +80,8 @@ class NewsletterManagerTest extends Unit
 
         $this->driver
             ->expects($this->once())
-            ->method('subscribe')
-            ->with('abc123', 'jane@example.com', [], []);
+            ->method('subscribeOrUpdate')
+            ->with('abc123', 'jane@example.com', [], [], SubscriptionStatus::SUBSCRIBED);
 
         $this->manager->subscribe($member);
     }
@@ -100,14 +103,14 @@ class NewsletterManagerTest extends Unit
             connectors: ['main' => $this->driver],
             listConfigs: ['default_newsletter' => $listConfigWithMappings],
         );
-        $manager = new NewsletterManager($registry, 'default_newsletter', $this->mapper, $this->remoteIds);
+        $manager = new NewsletterManager($registry, 'default_newsletter', $this->mapper, $this->remoteIds, new OutboundSyncSuppressor(), new NullLogger(), $this->segmentExporter());
 
         $member = $this->buildMember('jane@example.com', ['firstname' => 'Jane', 'lastname' => 'Doe']);
 
         $this->driver
             ->expects($this->once())
-            ->method('subscribe')
-            ->with('abc123', 'jane@example.com', ['FNAME' => 'Jane', 'LNAME' => 'Doe'], []);
+            ->method('subscribeOrUpdate')
+            ->with('abc123', 'jane@example.com', ['FNAME' => 'Jane', 'LNAME' => 'Doe'], [], SubscriptionStatus::SUBSCRIBED);
 
         $manager->subscribe($member);
     }
@@ -116,7 +119,7 @@ class NewsletterManagerTest extends Unit
     {
         $this->driver
             ->expects($this->once())
-            ->method('subscribe')
+            ->method('subscribeOrUpdate')
             ->with('abc123', 'jane@example.com');
 
         $this->manager->subscribe('jane@example.com', 'default_newsletter');
@@ -205,7 +208,7 @@ class NewsletterManagerTest extends Unit
             connectors: ['main' => $this->driver],
             listConfigs: ['default_newsletter' => $listConfigWithMappings],
         );
-        $manager = new NewsletterManager($registry, 'default_newsletter', $this->mapper, $this->remoteIds);
+        $manager = new NewsletterManager($registry, 'default_newsletter', $this->mapper, $this->remoteIds, new OutboundSyncSuppressor(), new NullLogger(), $this->segmentExporter());
 
         $member = $this->buildMember('jane@example.com', ['firstname' => 'Jane']);
         $member->method('getNewsletterSubscriptionStatus')->willReturn(SubscriptionStatus::SUBSCRIBED);
@@ -229,15 +232,124 @@ class NewsletterManagerTest extends Unit
         $this->manager->syncMemberToList($member, 'default_newsletter');
     }
 
-    public function testSyncMemberToListDefaultsToSubscribedWhenStatusIsNull(): void
+    /**
+     * The Customer Management Framework has no mapping entry for an empty status and falls back
+     * to unsubscribed, so a member we hold no status for must not be treated as subscribable.
+     */
+    public function testSyncMemberToListTreatsAnUnknownStatusAsUnsubscribed(): void
     {
         $member = $this->buildMember('jane@example.com', []);
         $member->method('getNewsletterSubscriptionStatus')->willReturn(null);
+        $member->method('getNewsletterProviderStatus')->willReturn(null);
+
+        $this->driver->expects($this->once())->method('unsubscribe')->with('abc123', 'jane@example.com');
+        $this->driver->expects($this->never())->method('subscribeOrUpdate');
+
+        $this->manager->syncMemberToList($member, 'default_newsletter');
+    }
+
+    public function testSyncMemberToListLeavesProviderStatusAloneWhenItAlreadyMatches(): void
+    {
+        $member = $this->buildMember('jane@example.com', []);
+        $member->method('getNewsletterSubscriptionStatus')->willReturn(SubscriptionStatus::SUBSCRIBED);
+        $member->method('getNewsletterProviderStatus')->willReturn(SubscriptionStatus::SUBSCRIBED);
 
         $this->driver
             ->expects($this->once())
             ->method('subscribeOrUpdate')
-            ->with('abc123', 'jane@example.com', [], [], SubscriptionStatus::SUBSCRIBED);
+            ->with('abc123', 'jane@example.com', [], [], SubscriptionStatus::SUBSCRIBED, false);
+
+        $this->manager->syncMemberToList($member, 'default_newsletter');
+    }
+
+    public function testSyncMemberToListRecordsWhatTheProviderNowHolds(): void
+    {
+        $member = $this->buildMember('jane@example.com', []);
+        $member->method('getNewsletterSubscriptionStatus')->willReturn(SubscriptionStatus::SUBSCRIBED);
+        $member->method('getNewsletterProviderStatus')->willReturn(null);
+
+        // Without this the comparison only starts working after the first pull.
+        $member->expects($this->once())->method('setNewsletterProviderStatus')
+            ->with('default_newsletter', SubscriptionStatus::SUBSCRIBED);
+        $member->expects($this->once())->method('setNewsletterProviderEmail')
+            ->with('default_newsletter', 'jane@example.com');
+        $member->expects($this->once())->method('save');
+
+        $this->manager->syncMemberToList($member, 'default_newsletter');
+    }
+
+    public function testSyncMemberToListDoesNotSaveWhenTheProviderStatusIsUnchanged(): void
+    {
+        $member = $this->buildMember('jane@example.com', []);
+        $member->method('getNewsletterSubscriptionStatus')->willReturn(SubscriptionStatus::SUBSCRIBED);
+        $member->method('getNewsletterProviderStatus')->willReturn(SubscriptionStatus::SUBSCRIBED);
+        $member->method('getNewsletterProviderEmail')->willReturn('jane@example.com');
+
+        $member->expects($this->never())->method('setNewsletterProviderStatus');
+        $member->expects($this->never())->method('save');
+
+        $this->manager->syncMemberToList($member, 'default_newsletter');
+    }
+
+    public function testChangedEmailDropsTheEntryLeftBehindAndRecreatesIt(): void
+    {
+        $member = $this->buildMember('new@example.com', []);
+        $member->method('getNewsletterSubscriptionStatus')->willReturn(SubscriptionStatus::SUBSCRIBED);
+        $member->method('getNewsletterProviderStatus')->willReturn(SubscriptionStatus::SUBSCRIBED);
+        $member->method('getNewsletterProviderEmail')->willReturn('old@example.com');
+
+        $this->driver
+            ->expects($this->once())
+            ->method('archive')
+            ->with('abc123', 'old@example.com');
+
+        // The provider holds nothing for the new address, so the status has to be written along.
+        $this->driver
+            ->expects($this->once())
+            ->method('subscribeOrUpdate')
+            ->with('abc123', 'new@example.com', [], [], SubscriptionStatus::SUBSCRIBED, true);
+
+        $member->expects($this->once())->method('setNewsletterProviderEmail')
+            ->with('default_newsletter', 'new@example.com');
+
+        $this->manager->syncMemberToList($member, 'default_newsletter');
+    }
+
+    public function testADifferentSpellingOfTheSameAddressIsNotTreatedAsAChange(): void
+    {
+        $member = $this->buildMember('Jane@Example.com', []);
+        $member->method('getNewsletterSubscriptionStatus')->willReturn(SubscriptionStatus::SUBSCRIBED);
+        $member->method('getNewsletterProviderStatus')->willReturn(SubscriptionStatus::SUBSCRIBED);
+        $member->method('getNewsletterProviderEmail')->willReturn('jane@example.com');
+
+        $this->driver->expects($this->never())->method('archive');
+
+        $this->manager->syncMemberToList($member, 'default_newsletter');
+    }
+
+    public function testAnUnsubscribedMemberWhoseAddressChangedIsOnlyDropped(): void
+    {
+        $member = $this->buildMember('new@example.com', []);
+        $member->method('getNewsletterSubscriptionStatus')->willReturn(SubscriptionStatus::UNSUBSCRIBED);
+        $member->method('getNewsletterProviderStatus')->willReturn(SubscriptionStatus::SUBSCRIBED);
+        $member->method('getNewsletterProviderEmail')->willReturn('old@example.com');
+
+        $this->driver->expects($this->once())->method('archive')->with('abc123', 'old@example.com');
+
+        // Unsubscribing the new address would ask the provider about someone it never heard of.
+        $this->driver->expects($this->never())->method('unsubscribe');
+        $this->driver->expects($this->never())->method('subscribeOrUpdate');
+
+        $this->manager->syncMemberToList($member, 'default_newsletter');
+    }
+
+    public function testSyncMemberToListDoesNotUnsubscribeWhenProviderAlreadyUnsubscribed(): void
+    {
+        $member = $this->buildMember('jane@example.com', []);
+        $member->method('getNewsletterSubscriptionStatus')->willReturn(SubscriptionStatus::UNSUBSCRIBED);
+        $member->method('getNewsletterProviderStatus')->willReturn(SubscriptionStatus::UNSUBSCRIBED);
+
+        $this->driver->expects($this->never())->method('unsubscribe');
 
         $this->manager->syncMemberToList($member, 'default_newsletter');
     }
@@ -245,7 +357,7 @@ class NewsletterManagerTest extends Unit
     public function testSyncMemberIteratesAllLists(): void
     {
         $member = $this->buildMember('jane@example.com', []);
-        $member->method('getNewsletterSubscriptionStatus')->willReturn(null);
+        $member->method('getNewsletterSubscriptionStatus')->willReturn(SubscriptionStatus::SUBSCRIBED);
 
         $this->driver->expects($this->once())->method('subscribeOrUpdate');
 
@@ -266,8 +378,7 @@ class NewsletterManagerTest extends Unit
         $otherSegment = $this->createMock(NewsletterSegmentInterface::class);
         $otherSegment->method('getNewsletterSegmentGroup')->willReturn($otherGroup);
 
-        $member = $this->buildMember('jane@example.com', []);
-        $member->method('getNewsletterSegments')->willReturn([$targetedSegment, $otherSegment]);
+        $member = $this->buildMember('jane@example.com', [], [$targetedSegment, $otherSegment]);
         $member->method('getNewsletterSubscriptionStatus')->willReturn(SubscriptionStatus::SUBSCRIBED);
 
         $this->remoteIds
@@ -280,12 +391,12 @@ class NewsletterManagerTest extends Unit
             ->method('subscribeOrUpdate')
             ->with('abc123', 'jane@example.com', [], ['interest_123'], SubscriptionStatus::SUBSCRIBED);
 
-        $this->manager->syncMemberToList($member, 'default_newsletter');
+        $this->managerManaging(['interest_123'])->syncMemberToList($member, 'default_newsletter');
     }
 
     public function testNoListNameAndNoDefaultThrowsLogicException(): void
     {
-        $managerWithoutDefault = new NewsletterManager($this->registry, null, $this->mapper, $this->remoteIds);
+        $managerWithoutDefault = new NewsletterManager($this->registry, null, $this->mapper, $this->remoteIds, new OutboundSyncSuppressor(), new NullLogger(), $this->segmentExporter());
 
         $this->expectException(\LogicException::class);
         $managerWithoutDefault->subscribe('jane@example.com');
@@ -294,13 +405,17 @@ class NewsletterManagerTest extends Unit
     // -------------------------------------------------------------------------
 
     /**
-     * @param array<string, mixed> $attributes  localField → value, matched by getter name
+     * Segments are stubbed here rather than by the caller: PHPUnit keeps the first
+     * matching stub's return value, so a second stub for the same method never applies.
+     *
+     * @param array<string, mixed>              $attributes localField → value, matched by getter name
+     * @param list<NewsletterSegmentInterface>  $segments
      */
-    private function buildMember(string $email, array $attributes): ManagerTestMember&MockObject
+    private function buildMember(string $email, array $attributes, array $segments = []): ManagerTestMember&MockObject
     {
         $member = $this->createMock(ManagerTestMember::class);
         $member->method('getNewsletterEmail')->willReturn($email);
-        $member->method('getNewsletterSegments')->willReturn([]);
+        $member->method('getNewsletterSegments')->willReturn($segments);
 
         foreach ($attributes as $field => $value) {
             $getter = u($field)
@@ -311,5 +426,100 @@ class NewsletterManagerTest extends Unit
         }
 
         return $member;
+    }
+
+    /**
+     * The manager asks it once per list for the segments this list manages; nothing here has any.
+     */
+    /**
+     * The manager asks it once per list which interests it manages. Everything a member carries is
+     * checked against that answer, so a test that expects an interest to travel has to name it.
+     *
+     * @param string[] $managed
+     */
+    private function segmentExporter(array $managed = []): ManagedSegmentInterestsInterface
+    {
+        $exporter = $this->createMock(ManagedSegmentInterestsInterface::class);
+        $exporter->method('managedSegmentRemoteIds')->willReturn($managed);
+
+        return $exporter;
+    }
+
+    /**
+     * @param string[] $managed
+     */
+    private function managerManaging(array $managed): NewsletterManager
+    {
+        return new NewsletterManager(
+            $this->registry,
+            'default_newsletter',
+            $this->mapper,
+            $this->remoteIds,
+            new OutboundSyncSuppressor(),
+            new NullLogger(),
+            $this->segmentExporter($managed),
+        );
+    }
+
+    public function testASignupRecordsTheSubscriptionOnTheMember(): void
+    {
+        $member = $this->buildMember('jane@example.com', []);
+
+        $member->expects($this->once())
+            ->method('setNewsletterSubscriptionStatus')
+            ->with('default_newsletter', SubscriptionStatus::SUBSCRIBED);
+        $member->expects($this->once())
+            ->method('setNewsletterProviderStatus')
+            ->with('default_newsletter', SubscriptionStatus::SUBSCRIBED);
+        $member->expects($this->once())
+            ->method('setNewsletterProviderEmail')
+            ->with('default_newsletter', 'jane@example.com');
+        $member->expects($this->once())->method('save');
+
+        $this->manager->subscribe($member, 'default_newsletter');
+    }
+
+    public function testSubscribingByAddressAloneTouchesNoMember(): void
+    {
+        $this->driver
+            ->expects($this->once())
+            ->method('subscribeOrUpdate')
+            ->with('abc123', 'walkin@example.com', [], [], SubscriptionStatus::SUBSCRIBED);
+
+        $this->manager->subscribe('walkin@example.com', 'default_newsletter');
+    }
+
+    public function testUnsubscribingRecordsItOnTheMember(): void
+    {
+        $member = $this->buildMember('jane@example.com', []);
+
+        $member->expects($this->once())
+            ->method('setNewsletterSubscriptionStatus')
+            ->with('default_newsletter', SubscriptionStatus::UNSUBSCRIBED);
+        $member->expects($this->once())
+            ->method('setNewsletterProviderStatus')
+            ->with('default_newsletter', SubscriptionStatus::UNSUBSCRIBED);
+        $member->expects($this->once())->method('save');
+
+        $this->manager->unsubscribe($member, 'default_newsletter');
+    }
+
+    public function testDeletingRecordsItOnTheMember(): void
+    {
+        $member = $this->buildMember('jane@example.com', []);
+
+        $member->expects($this->once())
+            ->method('setNewsletterSubscriptionStatus')
+            ->with('default_newsletter', SubscriptionStatus::UNSUBSCRIBED);
+        $member->expects($this->once())->method('save');
+
+        $this->manager->delete($member, 'default_newsletter');
+    }
+
+    public function testUnsubscribingByAddressAloneTouchesNoMember(): void
+    {
+        $this->driver->expects($this->once())->method('unsubscribe')->with('abc123', 'walkin@example.com');
+
+        $this->manager->unsubscribe('walkin@example.com', 'default_newsletter');
     }
 }

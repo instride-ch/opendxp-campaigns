@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace Instride\Bundle\OpenDxpCampaignsBundle\Newsletter;
 
 use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterMemberInterface;
+use Instride\Bundle\OpenDxpCampaignsBundle\Enum\SubscriptionStatus;
 
 /**
  * Primary service API for newsletter operations.
@@ -28,6 +29,9 @@ use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterMemberInterface;
  */
 interface NewsletterManagerInterface
 {
+    /**
+     * Creates or updates the member at the provider as subscribed.
+     */
     public function subscribe(NewsletterMemberInterface|string $member, ?string $listName = null): void;
 
     public function unsubscribe(NewsletterMemberInterface|string $member, ?string $listName = null): void;

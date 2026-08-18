@@ -68,25 +68,68 @@ class IncomingMemberSyncTest extends Unit
             }));
 
         $sync = $this->buildSync();
-        $result = $sync->applyStatus($member, self::LIST, SubscriptionStatus::SUBSCRIBED, 'sync.pull');
+        $result = $sync->applyStatus($member, self::LIST, SubscriptionStatus::SUBSCRIBED, 'jane@example.com', 'sync.pull');
 
         $this->assertTrue($result);
     }
 
-    public function testApplyStatusIsNoOpWhenStatusUnchanged(): void
+    public function testApplyStatusIsNoOpWhenBothStatusesUnchanged(): void
     {
         $member = $this->createMock(SyncTestMember::class);
         $member->method('getNewsletterSubscriptionStatus')->with(self::LIST)
             ->willReturn(SubscriptionStatus::SUBSCRIBED);
+        $member->method('getNewsletterProviderStatus')->with(self::LIST)
+            ->willReturn(SubscriptionStatus::SUBSCRIBED);
+        $member->method('getNewsletterProviderEmail')->with(self::LIST)
+            ->willReturn('jane@example.com');
 
         $member->expects($this->never())->method('setNewsletterSubscriptionStatus');
+        $member->expects($this->never())->method('setNewsletterProviderStatus');
+        $member->expects($this->never())->method('setNewsletterProviderEmail');
         $member->expects($this->never())->method('setNewsletterLastSyncDate');
         $this->eventDispatcher->expects($this->never())->method('dispatch');
 
         $sync = $this->buildSync();
-        $result = $sync->applyStatus($member, self::LIST, SubscriptionStatus::SUBSCRIBED, 'sync.pull');
+        $result = $sync->applyStatus($member, self::LIST, SubscriptionStatus::SUBSCRIBED, 'jane@example.com', 'sync.pull');
 
         $this->assertFalse($result);
+    }
+
+    public function testApplyStatusRecordsTheAddressTheProviderAnsweredUnder(): void
+    {
+        $member = $this->createMock(SyncTestMember::class);
+        $member->method('getNewsletterSubscriptionStatus')->with(self::LIST)
+            ->willReturn(SubscriptionStatus::SUBSCRIBED);
+        $member->method('getNewsletterProviderStatus')->with(self::LIST)
+            ->willReturn(SubscriptionStatus::SUBSCRIBED);
+        $member->method('getNewsletterProviderEmail')->with(self::LIST)->willReturn(null);
+
+        // Arms the push path to clean up after an address change on members that were only pulled.
+        $member->expects($this->once())->method('setNewsletterProviderEmail')
+            ->with(self::LIST, 'jane@example.com');
+
+        $sync = $this->buildSync();
+
+        $this->assertTrue(
+            $sync->applyStatus($member, self::LIST, SubscriptionStatus::SUBSCRIBED, 'jane@example.com', 'sync.pull'),
+        );
+    }
+
+    public function testApplyStatusRecordsProviderStatusEvenWhenOwnStatusUnchanged(): void
+    {
+        $member = $this->createMock(SyncTestMember::class);
+        $member->method('getNewsletterSubscriptionStatus')->with(self::LIST)
+            ->willReturn(SubscriptionStatus::SUBSCRIBED);
+        $member->method('getNewsletterProviderStatus')->with(self::LIST)->willReturn(null);
+
+        $member->expects($this->once())->method('setNewsletterProviderStatus')
+            ->with(self::LIST, SubscriptionStatus::SUBSCRIBED);
+        $member->expects($this->never())->method('setNewsletterSubscriptionStatus');
+        $this->eventDispatcher->expects($this->never())->method('dispatch');
+
+        $sync = $this->buildSync();
+
+        $this->assertTrue($sync->applyStatus($member, self::LIST, SubscriptionStatus::SUBSCRIBED, 'jane@example.com', 'sync.pull'));
     }
 
     // -------------------------------------------------------------------------

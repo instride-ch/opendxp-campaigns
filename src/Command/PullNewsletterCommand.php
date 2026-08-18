@@ -200,7 +200,7 @@ class PullNewsletterCommand extends AbstractCommand
         RemoteMember $remote,
     ): bool {
         $statusChanged = $remote->status !== null
-            && $this->incomingSync->applyStatus($member, $listName, $remote->status, 'sync.pull');
+            && $this->incomingSync->applyStatus($member, $listName, $remote->status, $remote->email, 'sync.pull');
 
         // Evaluated independently (not short-circuited) so merge fields sync even when the status did not change.
         $mergeChanged = $this->incomingSync->applyMergeFields($member, $listName, $remote->mergeFields);
