@@ -10,3 +10,9 @@ services:
     tags:
       - { name: controller.service_arguments }
     public: true
+
+  # autowire is required: UserAwareController needs setContainer and setTokenResolver injected.
+  Instride\Bundle\OpenDxpCampaignsBundle\Controller\Admin\TemplateExportController:
+    autowire: true
+    autoconfigure: true
+    public: true

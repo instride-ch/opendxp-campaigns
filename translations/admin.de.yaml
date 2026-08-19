@@ -1,0 +1,4 @@
+opendxp_campaigns_export_template: 'Als Mail-Vorlage exportieren'
+opendxp_campaigns_export_template_success: '"%s" als Vorlage %s exportiert.'
+opendxp_campaigns_export_template_failed: 'Der Vorlagen-Export ist fehlgeschlagen.'
+opendxp_campaigns_export_template_unsaved: 'Bitte zuerst speichern — exportiert wird der gespeicherte Stand.'
