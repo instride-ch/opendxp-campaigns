@@ -372,4 +372,18 @@ class MailchimpDriverTest extends Unit
         (new MailchimpDriver('mailchimp', 'key-us1', null, new NullLogger(), $client))
             ->subscribeOrUpdate(self::LIST, self::MAIL, [], ['int_live', 'int_gone'], SubscriptionStatus::SUBSCRIBED);
     }
+
+    public function testUnsubscribingSomebodyTheAudienceNeverHadIsNotAFailure(): void
+    {
+        $client = $this->createMock(MailChimp::class);
+        $client->method('success')->willReturn(false);
+        $client->method('patch')->willReturn(['status' => 404, 'detail' => 'The requested resource could not be found.']);
+        $client->method('getLastResponse')->willReturn(['headers' => ['http_code' => 404]]);
+
+        $driver = new MailchimpDriver('mailchimp', 'key-us1', null, new NullLogger(), $client);
+
+        $this->expectNotToPerformAssertions();
+
+        $driver->unsubscribe(self::LIST, self::MAIL);
+    }
 }

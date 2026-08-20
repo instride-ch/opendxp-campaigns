@@ -98,6 +98,13 @@ class MailchimpDriver implements NewsletterDriverInterface, TemplateExportCapabl
             'status' => SubscriptionStatus::UNSUBSCRIBED->value,
         ]);
 
+        // An address the audience never had is already as unsubscribed as it can be. It happens to
+        // anyone deleted at the provider after OpenDXP recorded them, and failing the member over
+        // it would repeat on every run.
+        if ($this->isMissing()) {
+            return;
+        }
+
         $this->assertSuccess('unsubscribe', $result);
     }
 
