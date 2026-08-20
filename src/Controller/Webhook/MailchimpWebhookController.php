@@ -17,12 +17,12 @@ declare(strict_types=1);
 
 namespace Instride\Bundle\OpenDxpCampaignsBundle\Controller\Webhook;
 
-use DrewM\MailChimp\Webhook;
 use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterMemberInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\DataObject\MemberResolverInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\Mailchimp\MailchimpDriver;
 use Instride\Bundle\OpenDxpCampaignsBundle\Enum\SubscriptionStatus;
+use Instride\Bundle\OpenDxpCampaignsBundle\Exception\ConnectorNotFoundException;
 use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\IncomingMemberSync;
 use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\OutboundSyncSuppressor;
 use OpenDxp\Model\Element\DuplicateFullPathException;
@@ -60,10 +60,18 @@ readonly class MailchimpWebhookController
             return new Response('', Response::HTTP_UNAUTHORIZED);
         }
 
-        $result = Webhook::receive();
-        $type = $result['type'];
-        $data = $result['data'];
-        $email = $data['email'] ?? null;
+        // Mailchimp posts form-encoded, so the parsed request body already holds the event.
+        $type = $request->request->getString('type');
+        $data = $request->request->all('data');
+
+        if ($type === '') {
+            $this->logger->warning('[OpenDXP Campaigns] Mailchimp webhook without an event type, ignoring.');
+
+            return new Response('', Response::HTTP_OK);
+        }
+
+        $email = \is_string($data['email'] ?? null) && $data['email'] !== '' ? $data['email'] : null;
+        $providerListId = \is_string($data['list_id'] ?? null) ? $data['list_id'] : '';
 
         $this->logger->info(
             \sprintf(
@@ -75,15 +83,20 @@ readonly class MailchimpWebhookController
         );
 
         $member = $this->resolveMember($email);
-        $changed = match ($type) {
-            'subscribe' => $this->handleStatusChange($member, $connectorName, SubscriptionStatus::SUBSCRIBED),
-            'unsubscribe' => $this->handleStatusChange($member, $connectorName, SubscriptionStatus::UNSUBSCRIBED),
-            'cleaned' => $this->handleStatusChange($member, $connectorName, SubscriptionStatus::CLEANED),
-            'profile' => $this->handleProfileUpdate($member, $connectorName, $data['merges'] ?? []),
+        $status = match ($type) {
+            'subscribe' => SubscriptionStatus::SUBSCRIBED,
+            'unsubscribe' => SubscriptionStatus::UNSUBSCRIBED,
+            'cleaned' => SubscriptionStatus::CLEANED,
+            default => null,
+        };
+
+        $changed = match (true) {
+            $status !== null => $this->handleStatusChange($member, $connectorName, $status, $email, $providerListId),
+            $type === 'profile' => $this->handleProfileUpdate($member, $connectorName, $data['merges'] ?? [], $providerListId),
             default => $this->handleUnknownType($type),
         };
 
-        if ($changed) {
+        if ($changed && $member !== null) {
             try {
                 // Suppress the outbound sync listener: this save applies provider state,
                 // pushing it straight back would be a redundant round-trip.
@@ -107,20 +120,18 @@ readonly class MailchimpWebhookController
     private function handleStatusChange(
         ?NewsletterMemberInterface $member,
         string $connectorName,
-        SubscriptionStatus $newStatus
+        SubscriptionStatus $newStatus,
+        ?string $email,
+        string $providerListId,
     ): bool {
-        if ($member === null) {
+        if ($member === null || $email === null) {
             return false;
         }
 
         $changed = false;
 
-        foreach ($this->registry->getListConfigs() as $listName => $listConfig) {
-            if ($listConfig->connectorName !== $connectorName) {
-                continue;
-            }
-
-            $changed = $this->incomingSync->applyStatus($member, $listName, $newStatus, 'webhook.mailchimp') || $changed;
+        foreach ($this->listNames($connectorName, $providerListId) as $listName) {
+            $changed = $this->incomingSync->applyStatus($member, $listName, $newStatus, $email, 'webhook.mailchimp') || $changed;
         }
 
         return $changed;
@@ -132,7 +143,8 @@ readonly class MailchimpWebhookController
     private function handleProfileUpdate(
         ?NewsletterMemberInterface $member,
         string $connectorName,
-        array $mergeFieldData
+        array $mergeFieldData,
+        string $providerListId,
     ): bool {
         if ($member === null || $mergeFieldData === []) {
             return false;
@@ -140,11 +152,7 @@ readonly class MailchimpWebhookController
 
         $changed = false;
 
-        foreach ($this->registry->getListConfigs() as $listName => $listConfig) {
-            if ($listConfig->connectorName !== $connectorName) {
-                continue;
-            }
-
+        foreach ($this->listNames($connectorName, $providerListId) as $listName) {
             $changed = $this->incomingSync->applyMergeFields($member, $listName, $mergeFieldData) || $changed;
         }
 
@@ -160,9 +168,48 @@ readonly class MailchimpWebhookController
         return false;
     }
 
+    /**
+     * The configured lists an event applies to.
+     *
+     * Mailchimp names the audience the event came from, and a connector may serve several. Without
+     * that filter an unsubscribe from one audience would mark the member unsubscribed on every list
+     * of the connector. An event without an audience falls back to all of them, which is what a
+     * hand-made call or an older payload looks like.
+     *
+     * @return string[]
+     */
+    private function listNames(string $connectorName, string $providerListId): array
+    {
+        $listNames = [];
+
+        foreach ($this->registry->getListConfigs() as $listName => $listConfig) {
+            if ($listConfig->connectorName !== $connectorName) {
+                continue;
+            }
+
+            if ($providerListId !== '' && $listConfig->providerListId !== $providerListId) {
+                continue;
+            }
+
+            $listNames[] = $listName;
+        }
+
+        return $listNames;
+    }
+
     private function validateSecret(Request $request, string $connectorName): bool
     {
-        $driver = $this->registry->getDriverForConnector($connectorName);
+        try {
+            $driver = $this->registry->getDriverForConnector($connectorName);
+        } catch (ConnectorNotFoundException) {
+            // The URL is public, so a wrong or outdated connector name is a caller's mistake,
+            // not ours: answering 401 keeps it out of the error log and out of Mailchimp's retries.
+            $this->logger->warning('[OpenDXP Campaigns] Webhook for unknown connector "{connector}".', [
+                'connector' => $connectorName,
+            ]);
+
+            return false;
+        }
 
         if (!$driver instanceof MailchimpDriver) {
             return false;
@@ -181,7 +228,7 @@ readonly class MailchimpWebhookController
 
     private function resolveMember(?string $email): ?NewsletterMemberInterface
     {
-        if (!\is_string($email) || $email === '') {
+        if ($email === null) {
             $this->logger->warning('[OpenDXP Campaigns] Mailchimp webhook missing email.');
 
             return null;

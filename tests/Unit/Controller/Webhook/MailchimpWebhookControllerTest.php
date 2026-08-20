@@ -6,7 +6,6 @@ namespace Instride\Bundle\OpenDxpCampaignsBundle\Tests\Unit\Controller\Webhook;
 
 use Carbon\Carbon;
 use Codeception\Test\Unit;
-use DrewM\MailChimp\Webhook;
 use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterDriverInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Contract\NewsletterMemberInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Controller\Webhook\MailchimpWebhookController;
@@ -85,10 +84,11 @@ class MailchimpWebhookControllerTest extends Unit
         // Nothing downstream should run once the secret check fails.
         $this->memberResolver->expects($this->never())->method('resolveByEmail');
 
-        $this->primeWebhook(['type' => 'subscribe', 'data' => ['email' => self::EMAIL]]);
-
         $controller = $this->buildController();
-        $request = Request::create($this->uri(['secret' => 'wrong-secret']), 'POST');
+        $request = $this->webhookRequest(
+            ['type' => 'subscribe', 'data' => ['email' => self::EMAIL]],
+            ['secret' => 'wrong-secret'],
+        );
         $response = $controller($request, self::CONNECTOR);
 
         $this->assertSame(Response::HTTP_UNAUTHORIZED, $response->getStatusCode());
@@ -98,10 +98,11 @@ class MailchimpWebhookControllerTest extends Unit
     {
         $this->memberResolver->method('resolveByEmail')->with(self::EMAIL)->willReturn(null);
 
-        $this->primeWebhook(['type' => 'subscribe', 'data' => ['email' => self::EMAIL]]);
-
         $controller = $this->buildController();
-        $response = $controller(Request::create($this->uri(), 'POST'), self::CONNECTOR);
+        $response = $controller(
+            $this->webhookRequest(['type' => 'subscribe', 'data' => ['email' => self::EMAIL]]),
+            self::CONNECTOR,
+        );
 
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
     }
@@ -137,10 +138,11 @@ class MailchimpWebhookControllerTest extends Unit
 
         $this->memberResolver->method('resolveByEmail')->with(self::EMAIL)->willReturn($member);
 
-        $this->primeWebhook(['type' => 'subscribe', 'data' => ['email' => self::EMAIL]]);
-
         $controller = $this->buildController();
-        $response = $controller(Request::create($this->uri(), 'POST'), self::CONNECTOR);
+        $response = $controller(
+            $this->webhookRequest(['type' => 'subscribe', 'data' => ['email' => self::EMAIL]]),
+            self::CONNECTOR,
+        );
 
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
     }
@@ -155,10 +157,11 @@ class MailchimpWebhookControllerTest extends Unit
 
         $this->memberResolver->method('resolveByEmail')->willReturn($member);
 
-        $this->primeWebhook(['type' => 'unsubscribe', 'data' => ['email' => self::EMAIL]]);
-
         $controller = $this->buildController();
-        $response = $controller(Request::create($this->uri(), 'POST'), self::CONNECTOR);
+        $response = $controller(
+            $this->webhookRequest(['type' => 'unsubscribe', 'data' => ['email' => self::EMAIL]]),
+            self::CONNECTOR,
+        );
 
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
     }
@@ -173,10 +176,11 @@ class MailchimpWebhookControllerTest extends Unit
 
         $this->memberResolver->method('resolveByEmail')->willReturn($member);
 
-        $this->primeWebhook(['type' => 'cleaned', 'data' => ['email' => self::EMAIL]]);
-
         $controller = $this->buildController();
-        $response = $controller(Request::create($this->uri(), 'POST'), self::CONNECTOR);
+        $response = $controller(
+            $this->webhookRequest(['type' => 'cleaned', 'data' => ['email' => self::EMAIL]]),
+            self::CONNECTOR,
+        );
 
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
     }
@@ -190,11 +194,12 @@ class MailchimpWebhookControllerTest extends Unit
 
         $this->memberResolver->method('resolveByEmail')->willReturn($member);
 
-        $this->primeWebhook(['type' => 'subscribe', 'data' => ['email' => self::EMAIL]]);
-
         // List belongs to connector "other", so a webhook for "main" must not touch it.
         $controller = $this->buildController(connectorName: 'other');
-        $response = $controller(Request::create($this->uri(), 'POST'), self::CONNECTOR);
+        $response = $controller(
+            $this->webhookRequest(['type' => 'subscribe', 'data' => ['email' => self::EMAIL]]),
+            self::CONNECTOR,
+        );
 
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
     }
@@ -217,15 +222,16 @@ class MailchimpWebhookControllerTest extends Unit
 
         $this->memberResolver->method('resolveByEmail')->willReturn($member);
 
-        $this->primeWebhook([
-            'type' => 'profile',
-            'data' => ['email' => self::EMAIL, 'merges' => ['FNAME' => 'Jane']],
-        ]);
-
         $controller = $this->buildController(mergeFieldMappings: [
             'firstname' => new MergeFieldMapping('firstname', 'FNAME'),
         ]);
-        $response = $controller(Request::create($this->uri(), 'POST'), self::CONNECTOR);
+        $response = $controller(
+            $this->webhookRequest([
+                'type' => 'profile',
+                'data' => ['email' => self::EMAIL, 'merges' => ['FNAME' => 'Jane']],
+            ]),
+            self::CONNECTOR,
+        );
 
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
     }
@@ -238,12 +244,13 @@ class MailchimpWebhookControllerTest extends Unit
 
         $this->memberResolver->method('resolveByEmail')->willReturn($member);
 
-        $this->primeWebhook(['type' => 'profile', 'data' => ['email' => self::EMAIL]]);
-
         $controller = $this->buildController(mergeFieldMappings: [
             'firstname' => new MergeFieldMapping('firstname', 'FNAME'),
         ]);
-        $response = $controller(Request::create($this->uri(), 'POST'), self::CONNECTOR);
+        $response = $controller(
+            $this->webhookRequest(['type' => 'profile', 'data' => ['email' => self::EMAIL]]),
+            self::CONNECTOR,
+        );
 
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
     }
@@ -265,10 +272,11 @@ class MailchimpWebhookControllerTest extends Unit
 
         $this->memberResolver->method('resolveByEmail')->willReturn($member);
 
-        $this->primeWebhook(['type' => 'campaign', 'data' => ['email' => self::EMAIL]]);
-
         $controller = $this->buildController();
-        $response = $controller(Request::create($this->uri(), 'POST'), self::CONNECTOR);
+        $response = $controller(
+            $this->webhookRequest(['type' => 'campaign', 'data' => ['email' => self::EMAIL]]),
+            self::CONNECTOR,
+        );
 
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
     }
@@ -318,14 +326,15 @@ class MailchimpWebhookControllerTest extends Unit
     }
 
     /**
-     * Seeds the drewm/mailchimp-api Webhook static input cache so the controller's
-     * argument-less Webhook::receive() call reads our payload instead of php://input.
+     * Builds the POST request Mailchimp would send: form-encoded, with the event type
+     * and its data in the request body.
      *
-     * @param array<string, mixed> $payload
+     * @param array<string, mixed>  $payload
+     * @param array<string, string> $query
      */
-    private function primeWebhook(array $payload): void
+    private function webhookRequest(array $payload, array $query = []): Request
     {
-        Webhook::receive(\http_build_query($payload));
+        return Request::create($this->uri($query), 'POST', $payload);
     }
 
     /**
