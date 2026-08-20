@@ -42,6 +42,10 @@ the configured list through `provider_list_id`. Two of its counts matter:
 | **unmapped** | the audience is not configured under `lists`. Add it, or run against the connector that owns it. |
 | **unloadable** | the element still holds a provider ID but its class no longer loads. Usually the segment classes: install them, then run again. |
 
+A note is only looked up once its audience maps to a configured list, so on an installation that does
+not have the audience configured everything lands under **unmapped** and neither of the other counts
+says anything.
+
 Run this before the first sync, and before enabling `sync_on_save`.
 
 ## 3. Bring the group membership back
@@ -51,7 +55,7 @@ provider and, after a class rebuild, nowhere else. Left alone, the first full pu
 managed interest as `false` for every member OpenDXP has no segments for, and the targeting a
 newsletter relies on is gone.
 
-```
+```bash
 bin/console campaigns:migrate:interests --list=<list> --dry-run
 bin/console campaigns:migrate:interests --list=<list>
 ```
