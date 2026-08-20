@@ -1,7 +1,8 @@
 # Migrating from Pimcore's Customer Management Framework
 
-Two things have to happen before the first synchronisation. Both are one-way streets: run them in
-the wrong order and the provider ends up with duplicates or a mass unsubscribe.
+Three things have to happen before the first synchronisation. Each is a one-way street: skip one and
+the provider ends up with duplicates, a mass unsubscribe, or an audience that has forgotten who
+belongs to which group.
 
 ## 1. Pull before you push
 
@@ -43,12 +44,7 @@ the configured list through `provider_list_id`. Two of its counts matter:
 
 Run this before the first sync, and before enabling `sync_on_save`.
 
-## What the bundle does not carry over
-
-The framework's segment builders — the ones that calculate segments from age, gender or state — have
-no counterpart here. Segments are DataObjects; whatever fills them is the application's business.
-
-## Bringing the group membership back
+## 3. Bring the group membership back
 
 The framework pushed segments and never read them back, so who belongs to which group lives at the
 provider and, after a class rebuild, nowhere else. Left alone, the first full push sends every
@@ -66,3 +62,8 @@ finds. Interests without a matching segment are reported, not created: where a s
 the object tree is your decision. Create the missing ones and run it again.
 
 Run it before the first push, and check afterwards that a push reports no change at the provider.
+
+## What the bundle does not carry over
+
+The framework's segment builders — the ones that calculate segments from age, gender or state — have
+no counterpart here. Segments are DataObjects; whatever fills them is the application's business.
