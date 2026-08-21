@@ -191,16 +191,3 @@ framework:
         routing:
             'Instride\Bundle\OpenDxpCampaignsBundle\Messenger\CampaignsMessageInterface': my_transport
 ```
-
-### TODO
-- [x] Finish and test merge field synchronization
-- [x] Ensure proper bidirectional synchronization of member data
-- [x] Provider-independent newsletter segmentation (segments + segment groups)
-- [x] Store provider remote IDs in cached OpenDXP Notes (RemoteIdStore)
-- [x] Async segment/group sync on create/update/delete (Messenger)
-- [x] Reusable traits, abstract base classes and optional installer class definitions
-- [x] Test synchronization (Messenger, Command, etc.)
-- [x] Implement template export functionality
-- [x] Implement an easy migration strategy for old CMF projects
-- [x] Add documentation
-- [ ] Add more tests

@@ -28,9 +28,9 @@
     "codeception/codeception": "^5.0",
     "codeception/module-asserts": "^3.0",
     "codeception/module-symfony": "^3.0",
+    "drewm/mailchimp-api": "^2.5",
     "phpstan/phpstan": "^2.0",
-    "phpstan/phpstan-symfony": "^2.0",
-    "drewm/mailchimp-api": "^2.5"
+    "phpstan/phpstan-symfony": "^2.0"
   },
   "suggest": {
     "drewm/mailchimp-api": "Required for the Mailchimp driver (composer require drewm/mailchimp-api)"
