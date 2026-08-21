@@ -1,0 +1,4 @@
+opendxp_campaigns_export_template: 'Exporter comme modèle d''e-mail'
+opendxp_campaigns_export_template_success: '"%s" exporté comme modèle %s.'
+opendxp_campaigns_export_template_failed: 'L''export du modèle a échoué.'
+opendxp_campaigns_export_template_unsaved: 'Veuillez d’abord enregistrer — l’export utilise l’état enregistré.'

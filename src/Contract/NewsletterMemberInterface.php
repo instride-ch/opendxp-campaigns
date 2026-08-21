@@ -43,6 +43,19 @@ interface NewsletterMemberInterface extends ElementInterface
     public function getNewsletterSegments(): iterable;
 
     /**
+     * Replaces the segments this member belongs to.
+     *
+     * Only a migration writes this: membership is maintained in OpenDXP and pushed from there, so
+     * the one time it has to travel the other way is when it lives at the provider and nowhere else.
+     *
+     * Nullable and returning static to match what OpenDXP generates for a relation field, so a
+     * DataObject satisfies this without a hand-written override.
+     *
+     * @param NewsletterSegmentInterface[]|null $segments
+     */
+    public function setNewsletterSegments(?array $segments): static;
+
+    /**
      * Returns the current subscription status for the given list key, or null if unknown.
      *
      * @param string $listKey the configured list identifier (YAML key under `lists:`)
@@ -61,9 +74,31 @@ interface NewsletterMemberInterface extends ElementInterface
     public function setNewsletterSubscriptionStatus(string $listKey, SubscriptionStatus $status): void;
 
     /**
-     * Returns the timestamp of the last successful sync for the given list key, or null.
+     * The status the provider last reported for this list, or null while none was ever seen.
      *
-     * @param string $listKey the configured list identifier
+     * Kept apart from the subscription status so a push can tell whether it would change
+     * anything at the provider, and leave existing members alone when it would not.
+     */
+    public function getNewsletterProviderStatus(string $listKey): ?SubscriptionStatus;
+
+    public function setNewsletterProviderStatus(string $listKey, SubscriptionStatus $status): void;
+
+    /**
+     * The address the provider holds this member under, or null while none was ever pushed.
+     *
+     * Providers identify a member by their address, so changing it in the PIM creates a second
+     * member there rather than renaming the first. Holding the pushed address lets the next push
+     * remove the entry left behind.
+     */
+    public function getNewsletterProviderEmail(string $listKey): ?string;
+
+    public function setNewsletterProviderEmail(string $listKey, string $email): void;
+
+    /**
+     * When something last came back from the provider for this list — pull or webhook, never push.
+     *
+     * The push command reads it to tell whether a list was ever pulled into; stamping it on the way
+     * out would make a push satisfy that check and defeat it.
      */
     public function getNewsletterLastSyncDate(string $listKey): ?Carbon;
 

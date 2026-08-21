@@ -74,6 +74,17 @@ readonly class DriverRegistry
     }
 
     /**
+     * The connector to fall back on when a caller names none. Null once the choice is ambiguous,
+     * which includes an install that configured no connector at all.
+     */
+    public function soleConnectorName(): ?string
+    {
+        $names = $this->getConnectorNames();
+
+        return \count($names) === 1 ? $names[0] : null;
+    }
+
+    /**
      * @return string[]
      */
     public function getListNames(): array

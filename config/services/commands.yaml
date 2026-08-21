@@ -5,9 +5,26 @@ services:
       $registry: '@Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry'
       $newsletterManager: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\NewsletterManagerInterface'
       $bus: '@Symfony\Component\Messenger\MessageBusInterface'
-      # MemberResolverInterface and MemberProviderInterface are optional
-      $memberResolver: '@?Instride\Bundle\OpenDxpCampaignsBundle\DataObject\MemberResolverInterface'
-      $memberProvider: '@?Instride\Bundle\OpenDxpCampaignsBundle\DataObject\MemberProviderInterface'
+      $memberResolver: '@Instride\Bundle\OpenDxpCampaignsBundle\DataObject\MemberResolverInterface'
+      $memberProvider: '@Instride\Bundle\OpenDxpCampaignsBundle\DataObject\MemberProviderInterface'
+      $segmentExporter: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\SegmentExporter'
+    tags:
+      - { name: console.command }
+
+  Instride\Bundle\OpenDxpCampaignsBundle\Command\ImportProviderInterestsCommand:
+    arguments:
+      $registry: '@Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry'
+      $remoteIds: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\RemoteIdStore'
+      $segmentExporter: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\SegmentExporter'
+      $memberResolver: '@Instride\Bundle\OpenDxpCampaignsBundle\DataObject\MemberResolverInterface'
+      $suppressor: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\OutboundSyncSuppressor'
+    tags:
+      - { name: console.command }
+
+  Instride\Bundle\OpenDxpCampaignsBundle\Command\ImportCmfRemoteIdsCommand:
+    arguments:
+      $registry: '@Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry'
+      $remoteIds: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\RemoteIdStore'
     tags:
       - { name: console.command }
 
@@ -16,7 +33,6 @@ services:
       $registry: '@Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry'
       $incomingSync: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\IncomingMemberSync'
       $suppressor: '@Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\OutboundSyncSuppressor'
-      # MemberResolverInterface is optional (only registered when member_class is configured)
-      $memberResolver: '@?Instride\Bundle\OpenDxpCampaignsBundle\DataObject\MemberResolverInterface'
+      $memberResolver: '@Instride\Bundle\OpenDxpCampaignsBundle\DataObject\MemberResolverInterface'
     tags:
       - { name: console.command }

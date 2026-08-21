@@ -17,6 +17,8 @@ declare(strict_types=1);
 
 namespace Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Message;
 
+use Instride\Bundle\OpenDxpCampaignsBundle\Messenger\CampaignsMessageInterface;
+
 /**
  * Dispatched when a segment group DataObject is created or updated and should be
  * (re-)exported to the newsletter provider.
@@ -24,7 +26,7 @@ namespace Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Message;
  * Idempotent: the handler reconciles current group state against the provider,
  * so replays are safe and retryable.
  */
-final readonly class SyncSegmentGroupMessage
+final readonly class SyncSegmentGroupMessage implements CampaignsMessageInterface
 {
     public function __construct(
         public int $objectId,

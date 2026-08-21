@@ -1,0 +1,4 @@
+opendxp_campaigns_export_template: 'Export as mail template'
+opendxp_campaigns_export_template_success: 'Exported "%s" as template %s.'
+opendxp_campaigns_export_template_failed: 'The template export failed.'
+opendxp_campaigns_export_template_unsaved: 'Please save first — the export uses the saved state.'

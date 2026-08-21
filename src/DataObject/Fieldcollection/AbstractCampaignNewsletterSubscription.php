@@ -37,6 +37,14 @@ abstract class AbstractCampaignNewsletterSubscription extends AbstractData
 
     abstract public function setStatus(?string $status): static;
 
+    abstract public function getProviderStatus(): ?string;
+
+    abstract public function setProviderStatus(?string $providerStatus): static;
+
+    abstract public function getProviderEmail(): ?string;
+
+    abstract public function setProviderEmail(?string $providerEmail): static;
+
     abstract public function getProviderMemberId(): ?string;
 
     abstract public function setProviderMemberId(?string $providerMemberId): static;

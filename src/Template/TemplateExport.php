@@ -20,9 +20,9 @@ namespace Instride\Bundle\OpenDxpCampaignsBundle\Template;
 final readonly class TemplateExport
 {
     /**
-     * @param string      $name               template name / slug; used to find existing templates on the provider
+     * @param string      $name               label shown in the provider's UI
      * @param string      $html               full rendered HTML content of the template
-     * @param string|null $providerTemplateId when known, skip the lookup and update directly
+     * @param string|null $providerTemplateId identifies the template; without it a new one is created
      */
     public function __construct(
         public string $name,

@@ -25,10 +25,10 @@ use Symfony\Contracts\Cache\CacheInterface;
 
 /**
  * Stores and reads provider-assigned remote IDs (Mailchimp interest / interest
- * category IDs) for exported elements, keyed by (element, connector, list).
+ * category IDs) for exported elements, keyed by (element, connector, scope).
  *
  * The mapping lives in a single OpenDXP Note per element (type {@see self::NOTE_TYPE}),
- * whose data holds one entry per "connector:list" key. Notes survive class-definition
+ * whose data holds one entry per "connector:scope" key. Notes survive class-definition
  * re-imports, so the local<->remote mapping is never lost.
  *
  * Reads are cached (PSR-6 pool via CacheInterface) plus memoized in-request, so
@@ -43,6 +43,12 @@ class RemoteIdStore
     private const string NOTE_TITLE = 'OpenDXP Campaigns: exported remote IDs';
 
     /**
+     * Scope for objects that exist once per account rather than per list, such as templates.
+     * A scope is therefore either a list name or this constant — hence the name.
+     */
+    public const string SCOPE_ACCOUNT = 'account';
+
+    /**
      * In-request memoization: elementCacheKey => (mapKey => remoteId).
      *
      * @var array<string, array<string, string>>
@@ -53,22 +59,22 @@ class RemoteIdStore
         private readonly CacheInterface $cache,
     ) {}
 
-    public function getRemoteId(ElementInterface $object, string $connector, string $list): ?string
+    public function getRemoteId(ElementInterface $object, string $connector, string $scope): ?string
     {
-        return $this->loadMap($object)[$this->mapKey($connector, $list)] ?? null;
+        return $this->loadMap($object)[$this->mapKey($connector, $scope)] ?? null;
     }
 
-    public function setRemoteId(ElementInterface $object, string $connector, string $list, string $remoteId): void
+    public function setRemoteId(ElementInterface $object, string $connector, string $scope, string $remoteId): void
     {
         $note = $this->findNote($object) ?? $this->createNote($object);
-        $note->addData($this->mapKey($connector, $list), 'text', $remoteId);
+        $note->addData($this->mapKey($connector, $scope), 'text', $remoteId);
         $note->setDate(\time());
         $note->save();
 
         $this->invalidate($object);
     }
 
-    public function removeRemoteId(ElementInterface $object, string $connector, string $list): void
+    public function removeRemoteId(ElementInterface $object, string $connector, string $scope): void
     {
         $note = $this->findNote($object);
 
@@ -77,7 +83,7 @@ class RemoteIdStore
         }
 
         $data = $note->getData();
-        unset($data[$this->mapKey($connector, $list)]);
+        unset($data[$this->mapKey($connector, $scope)]);
 
         if ($data === []) {
             $note->delete();
@@ -92,7 +98,7 @@ class RemoteIdStore
     /**
      * All stored remote IDs for the given element and connector.
      *
-     * @return array<string, string> list identifier => remote ID
+     * @return array<string, string> "connector:scope" => remote ID
      */
     public function allRemoteIds(ElementInterface $object, string $connector): array
     {
@@ -112,9 +118,9 @@ class RemoteIdStore
     // Internals
     // -------------------------------------------------------------------------
 
-    private function mapKey(string $connector, string $list): string
+    private function mapKey(string $connector, string $scope): string
     {
-        return $connector . ':' . $list;
+        return $connector . ':' . $scope;
     }
 
     /**

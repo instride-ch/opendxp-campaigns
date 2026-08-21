@@ -20,16 +20,27 @@ namespace Instride\Bundle\OpenDxpCampaignsBundle;
 use Instride\Bundle\OpenDxpCampaignsBundle\DependencyInjection\OpenDxpCampaignsExtension;
 use OpenDxp\Extension\Bundle\AbstractOpenDxpBundle;
 use OpenDxp\Extension\Bundle\Installer\InstallerInterface;
+use OpenDxp\Extension\Bundle\OpenDxpBundleAdminClassicInterface;
+use OpenDxp\Extension\Bundle\Traits\BundleAdminClassicTrait;
 use OpenDxp\Extension\Bundle\Traits\PackageVersionTrait;
+use Override;
 use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
 
-class OpenDxpCampaignsBundle extends AbstractOpenDxpBundle
+class OpenDxpCampaignsBundle extends AbstractOpenDxpBundle implements OpenDxpBundleAdminClassicInterface
 {
+    use BundleAdminClassicTrait;
     use PackageVersionTrait;
 
     public function getNiceName(): string
     {
         return 'OpenDXP Campaigns';
+    }
+
+    public function getJsPaths(): array
+    {
+        return [
+            '/bundles/opendxpcampaigns/js/document/template-export.js',
+        ];
     }
 
     public function getContainerExtension(): ?ExtensionInterface
@@ -41,9 +52,22 @@ class OpenDxpCampaignsBundle extends AbstractOpenDxpBundle
         return $this->extension ?: null;
     }
 
+    /** BundleConfigLocator resolves config/opendxp relative to this path. */
+    #[Override]
+    public function getPath(): string
+    {
+        return \dirname(__DIR__);
+    }
+
     public function getInstaller(): InstallerInterface
     {
-        return $this->container->get(Installer::class);
+        $installer = $this->container?->get(Installer::class);
+
+        if (!$installer instanceof InstallerInterface) {
+            throw new \LogicException('The campaigns installer is missing from the container.');
+        }
+
+        return $installer;
     }
 
     protected function getComposerPackageName(): string

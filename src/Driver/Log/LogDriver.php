@@ -60,23 +60,36 @@ readonly class LogDriver implements NewsletterDriverInterface, SegmentExportCapa
         $this->log('unsubscribe', $listId, $email);
     }
 
+    /**
+     * @param array<string, mixed> $mergeFields
+     * @param string[]             $interestIds
+     * @param string[]             $managedInterestIds
+     */
     public function subscribeOrUpdate(
         string $listId,
         string $email,
         array $mergeFields = [],
         array $interestIds = [],
         SubscriptionStatus $status = SubscriptionStatus::SUBSCRIBED,
+        bool $mayOverwriteStatus = true,
+        array $managedInterestIds = [],
     ): void {
         $this->log('subscribeOrUpdate', $listId, $email, [
             'merge_fields' => $mergeFields,
             'interest_ids' => $interestIds,
             'status' => $status->value,
+            'may_overwrite_status' => $mayOverwriteStatus,
         ]);
     }
 
     public function delete(string $listId, string $email): void
     {
         $this->log('delete', $listId, $email);
+    }
+
+    public function archive(string $listId, string $email): void
+    {
+        $this->log('archive', $listId, $email);
     }
 
     public function getMember(string $listId, string $email): ?array
@@ -131,6 +144,27 @@ readonly class LogDriver implements NewsletterDriverInterface, SegmentExportCapa
         ]);
 
         return $remoteId ?? 'log_segment_' . \md5($listId . $groupRemoteId . $name);
+    }
+
+    public function listSegmentGroups(string $listId): array
+    {
+        $this->log('listSegmentGroups', $listId, '');
+
+        return [];
+    }
+
+    public function listSegments(string $listId, string $groupRemoteId): array
+    {
+        $this->log('listSegments', $listId, '', ['group_remote_id' => $groupRemoteId]);
+
+        return [];
+    }
+
+    public function listMemberInterests(string $listId): iterable
+    {
+        $this->log('listMemberInterests', $listId, '');
+
+        return [];
     }
 
     public function deleteSegment(string $listId, string $groupRemoteId, string $remoteId): void

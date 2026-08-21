@@ -22,6 +22,7 @@ use Instride\Bundle\OpenDxpCampaignsBundle\DataObject\MemberResolverInterface;
 use Instride\Bundle\OpenDxpCampaignsBundle\Driver\DriverRegistry;
 use Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Message\SyncMemberToListMessage;
 use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\NewsletterManagerInterface;
+use Instride\Bundle\OpenDxpCampaignsBundle\Newsletter\SegmentExporter;
 use OpenDxp\Console\AbstractCommand;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -43,6 +44,7 @@ class PushNewsletterCommand extends AbstractCommand
         private readonly MessageBusInterface $bus,
         private readonly MemberResolverInterface $memberResolver,
         private readonly MemberProviderInterface $memberProvider,
+        private readonly SegmentExporter $segmentExporter,
     ) {
         parent::__construct();
     }
@@ -55,6 +57,8 @@ class PushNewsletterCommand extends AbstractCommand
             ->addOption('member', null, InputOption::VALUE_REQUIRED, 'Sync a single member by ID or email address')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Print what would happen without making API calls')
             ->addOption('async', null, InputOption::VALUE_NONE, 'Dispatch Messenger messages instead of syncing inline')
+            ->addOption('force', null, InputOption::VALUE_NONE, 'Push a list nothing was ever pulled into')
+            ->addOption('segments', null, InputOption::VALUE_NONE, 'Sweep segment groups and segments instead of members')
         ;
     }
 
@@ -68,6 +72,8 @@ class PushNewsletterCommand extends AbstractCommand
         $member = $input->getOption('member');
         $dryRun = (bool) $input->getOption('dry-run');
         $async = (bool) $input->getOption('async');
+        $force = (bool) $input->getOption('force');
+        $segments = (bool) $input->getOption('segments');
 
         if ($dryRun) {
             $this->io->note('Dry-run mode: no API calls will be made.');
@@ -81,11 +87,56 @@ class PushNewsletterCommand extends AbstractCommand
             return Command::SUCCESS;
         }
 
+        if ($segments) {
+            return $this->syncSegments($listNames, $dryRun);
+        }
+
         if ($member !== null) {
             return $this->syncSingleMember($listNames, $member, $dryRun, $async);
         }
 
-        return $this->syncAllMembers($listNames, $dryRun, $async);
+        return $this->syncAllMembers($listNames, $dryRun, $async, $force);
+    }
+
+    /**
+     * Brings every group and segment of a list to the provider and takes away what only exists
+     * there. Recovers from dropped Messenger messages, which no single-object export can.
+     *
+     * @param string[] $listNames
+     */
+    private function syncSegments(array $listNames, bool $dryRun): int
+    {
+        $failed = 0;
+
+        foreach ($listNames as $listName) {
+            try {
+                $counts = $this->segmentExporter->syncList($listName, $dryRun);
+            } catch (\Throwable $exception) {
+                $this->io->error(\sprintf('List "%s": %s', $listName, $exception->getMessage()));
+                $failed++;
+
+                continue;
+            }
+
+            $this->io->writeln(\sprintf(
+                ' List "%s": %d group(s), %d segment(s) exported; %d group(s), %d segment(s) removed at the provider',
+                $listName,
+                $counts['groups'],
+                $counts['segments'],
+                $counts['removed_groups'],
+                $counts['removed_segments'],
+            ));
+        }
+
+        if ($failed > 0) {
+            $this->io->error(\sprintf('%d list(s) failed.', $failed));
+
+            return Command::FAILURE;
+        }
+
+        $this->io->success('Done.');
+
+        return Command::SUCCESS;
     }
 
     /**
@@ -129,11 +180,25 @@ class PushNewsletterCommand extends AbstractCommand
      *
      * @throws ExceptionInterface
      */
-    private function syncAllMembers(array $listNames, bool $dryRun, bool $async): int
+    private function syncAllMembers(array $listNames, bool $dryRun, bool $async, bool $force): int
     {
         foreach ($listNames as $listName) {
+            if (!$force && !$dryRun && !$this->memberProvider->hasMemberSyncedFromProvider($listName)) {
+                $this->io->error(\sprintf(
+                    'Nothing was ever pulled into list "%s". Every member without a status would be'
+                    . ' reported as an unsubscribe. Run campaigns:newsletter:pull --list=%s first,'
+                    . ' or pass --force. See the README section on migrating from the Customer'
+                    . ' Management Framework.',
+                    $listName,
+                    $listName,
+                ));
+
+                return Command::FAILURE;
+            }
+
             $this->io->section(\sprintf('Syncing all members → list "%s"', $listName));
             $count = 0;
+            $failed = 0;
 
             foreach ($this->memberProvider->findByList($listName) as $member) {
                 $this->io->text(\sprintf('  %s', $member->getNewsletterEmail()));
@@ -142,14 +207,26 @@ class PushNewsletterCommand extends AbstractCommand
                     if ($async) {
                         $this->bus->dispatch(new SyncMemberToListMessage($listName, $member->getNewsletterEmail()));
                     } else {
-                        $this->newsletterManager->syncMemberToList($member, $listName);
+                        // One member the provider rejects must not end the run for everyone behind
+                        // them: the Customer Management Framework logs and carries on the same way.
+                        try {
+                            $this->newsletterManager->syncMemberToList($member, $listName);
+                        } catch (\Throwable $exception) {
+                            $this->io->warning(\sprintf(
+                                '  %s failed: %s',
+                                $member->getNewsletterEmail(),
+                                $exception->getMessage(),
+                            ));
+
+                            ++$failed;
+                        }
                     }
                 }
 
                 ++$count;
             }
 
-            $this->io->text(\sprintf('  → %d member(s) processed.', $count));
+            $this->io->text(\sprintf('  → %d member(s) processed, %d failed.', $count, $failed));
         }
 
         $this->io->success('Sync complete.');

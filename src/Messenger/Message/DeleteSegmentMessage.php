@@ -17,6 +17,8 @@ declare(strict_types=1);
 
 namespace Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Message;
 
+use Instride\Bundle\OpenDxpCampaignsBundle\Messenger\CampaignsMessageInterface;
+
 /**
  * Dispatched when a segment DataObject is deleted.
  *
@@ -24,7 +26,7 @@ namespace Instride\Bundle\OpenDxpCampaignsBundle\Messenger\Message;
  * delete time (preDelete) because the object and its Notes no longer exist when
  * an async worker runs.
  */
-final readonly class DeleteSegmentMessage
+final readonly class DeleteSegmentMessage implements CampaignsMessageInterface
 {
     /**
      * @param array<string, array{group_remote_id: string, remote_id: string}> $byList

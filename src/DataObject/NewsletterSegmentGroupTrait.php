@@ -49,7 +49,7 @@ trait NewsletterSegmentGroupTrait
     {
         return \array_values(\array_filter(
             $this->getLists() ?? [],
-            static fn (mixed $list): bool => \is_string($list) && $list !== '',
+            static fn (string $list): bool => $list !== '',
         ));
     }
 

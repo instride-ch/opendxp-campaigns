@@ -50,18 +50,37 @@ final readonly class IncomingMemberSync
      * the last-sync timestamp is bumped, a MemberSubscriptionStatusChangedEvent is
      * dispatched and true is returned.
      *
-     * @param string $source origin of the change, e.g. 'webhook.mailchimp' or 'sync.pull'
+     * @param string $providerEmail the address the provider holds the member under
+     * @param string $source        origin of the change, e.g. 'webhook.mailchimp' or 'sync.pull'
      */
     public function applyStatus(
         NewsletterMemberInterface $member,
         string $listName,
         SubscriptionStatus $status,
+        string $providerEmail,
         string $source,
     ): bool {
         $previousStatus = $member->getNewsletterSubscriptionStatus($listName);
 
+        // What the provider reports is worth keeping even when our own status already matches:
+        // the push path compares against it to decide whether it may overwrite the provider.
+        $providerChanged = $member->getNewsletterProviderStatus($listName) !== $status;
+
+        // Not merely idempotence: the setter walks the whole fieldcollection and reassigns it,
+        // which is real work on every unchanged member of a full pull.
+        if ($providerChanged) {
+            $member->setNewsletterProviderStatus($listName, $status);
+        }
+
+        // The address the provider answered under. Recording it here arms the push path to clean
+        // up after an address change for members that were only ever pulled, never pushed.
+        if ($member->getNewsletterProviderEmail($listName) !== $providerEmail) {
+            $member->setNewsletterProviderEmail($listName, $providerEmail);
+            $providerChanged = true;
+        }
+
         if ($previousStatus === $status) {
-            return false;
+            return $providerChanged;
         }
 
         $member->setNewsletterSubscriptionStatus($listName, $status);

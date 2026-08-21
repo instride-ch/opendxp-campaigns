@@ -40,4 +40,12 @@ interface MemberProviderInterface
      * @return iterable<NewsletterMemberInterface>
      */
     public function findByList(string $listName): iterable;
+
+    /**
+     * Whether any member carries a sync date for this list, which only an inbound sync ever writes.
+     *
+     * Answers one question: has anything come back from the provider for this list yet? A push
+     * before that reports every member without a status as an unsubscribe.
+     */
+    public function hasMemberSyncedFromProvider(string $listName): bool;
 }
