@@ -191,3 +191,10 @@ framework:
         routing:
             'Instride\Bundle\OpenDxpCampaignsBundle\Messenger\CampaignsMessageInterface': my_transport
 ```
+
+### License
+**instride AG**, Sandgruebestrasse 4, 6210 Sursee, Switzerland  
+connect@instride.ch, [instride.ch](https://instride.ch)  
+Copyright © 2026 instride AG. All rights reserved.
+
+For licensing details please visit [LICENSE.md](LICENSE.md)
