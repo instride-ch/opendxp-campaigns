@@ -173,12 +173,19 @@ readonly class TemplateExportService
 
     /**
      * Swaps the host in link targets only, so the same string appearing in the mail copy stays put.
+     *
+     * Every occurrence inside the attribute, not just the one behind the opening quote: a srcset
+     * carries several URLs separated by commas, and anchoring on the quote left all but the first
+     * untouched. A retina client then picks the 2x candidate, which still spoke http, and an
+     * https page blocks it as mixed content -- the image stays blank while the src beside it is
+     * perfectly fine (measured 2026-08-24 on an exported template).
      */
     public function rewriteHost(string $html, string $from, string $to): string
     {
-        return (string) \preg_replace(
-            '@(href|src|srcset)(\s*=\s*["\'])' . \preg_quote($from, '@') . '@i',
-            '$1$2' . $to,
+        return (string) \preg_replace_callback(
+            '@(href|src|srcset)(\s*=\s*)(["\'])(.*?)\3@is',
+            static fn (array $match): string => $match[1] . $match[2] . $match[3]
+                . \str_replace($from, $to, $match[4]) . $match[3],
             $html
         );
     }
