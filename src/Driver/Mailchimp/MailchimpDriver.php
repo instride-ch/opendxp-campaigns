@@ -277,10 +277,16 @@ class MailchimpDriver implements NewsletterDriverInterface, TemplateExportCapabl
     /**
      * Undoes the masking, and separately repairs merge tags inside otherwise absolute URLs,
      * which setAbsolutePaths() url-encodes while normalising the surrounding link.
+     *
+     * Decoding the pipes has to come first. setAbsolutePaths() encodes them inside the masked
+     * href as well, so a mask looked for as `data:*|` no longer matches -- str_replace works
+     * through the array in order, and by the time the pipes were readable again the mask had
+     * been passed. Every exported template shipped `href="data:*|UNSUB|*"`, which Mailchimp
+     * does not recognise as a merge tag: the unsubscribe and archive links were dead.
      */
     public function restorePlaceholders(string $html): string
     {
-        return \str_replace(['data:*|', '*%7C', '%7C*'], ['*|', '*|', '|*'], $html);
+        return \str_replace(['*%7C', '%7C*', 'data:*|'], ['*|', '|*', '*|'], $html);
     }
 
     public function exportSegmentGroup(string $listId, string $name, ?string $remoteId): string
